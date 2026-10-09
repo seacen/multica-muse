@@ -16,7 +16,7 @@ Multica agents run coding CLIs. With multica-muse, they can delegate tasks to yo
 
 - Multica agents are strong, but they only run the CLIs you give them.
 - Your Muse app already does more: shell, browser, files, memory, and judgment across tools.
-- multica-muse connects the two. One command installs it.
+- multica-muse connects the two. Setup takes minutes.
 
 ## How it works
 
@@ -52,7 +52,7 @@ npx skills add seacen/multica-muse@multica-muse-setup
 Then tell your Muse: "Set up multica-muse." The
 [skill](skills/multica-muse-setup/SKILL.md) does everything: install the
 receptionist, log in the daemon, register the queue watcher, run a smoke
-test, create the notification side chat.
+test, and create a dedicated side chat where all task notifications land.
 
 **Option B — manual.**
 
@@ -66,11 +66,11 @@ MULTICA_TOKEN=mul_your_token_here ./install.sh --server https://your-multica-ser
 
 Use `--saas` instead of `--server` for Multica's hosted service. Create the token in Multica first: avatar → Settings → API Tokens. Passing it as an environment variable keeps it out of your shell history.
 
-**2. Ask your Muse to register the queue watcher.**
+**2. Ask your Muse to register the queue watcher and create the side chat.**
 
-> "Register the multica-muse queue watcher hook."
+> "Register the multica-muse queue watcher hook, and create the dedicated side chat for task notifications."
 
-This step needs agent tools. A shell script cannot do it. Your Muse runs a dry run first (empty queue, then a test task), then enables the hook.
+The hook step needs agent tools. A shell script cannot do it. Your Muse runs a dry run first (empty queue, then a test task), then enables the hook.
 
 **3. Dispatch a task from Multica.**
 

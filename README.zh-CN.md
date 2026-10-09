@@ -16,7 +16,7 @@ Multica 智能体只能跑代码 CLI。有了 multica-muse，它们可以把任�
 
 - Multica 智能体很强，但只能跑你给它的 CLI。
 - 你的 Muse 应用能做更多：shell、浏览器、文件、记忆，还能跨工具判断。
-- multica-muse 把两者连起来。一条命令装好。
+- multica-muse 把两者连起来。几分钟装好。
 
 ## 工作原理
 
@@ -51,7 +51,8 @@ npx skills add seacen/multica-muse@multica-muse-setup
 
 然后跟你的 Muse 说："装一下 multica-muse。"
 [Skill](skills/multica-muse-setup/SKILL.md) 会搞定一切：装接待员、登录
-daemon、注册 queue watcher、跑烟雾测试、建通知 side chat。
+daemon、注册 queue watcher、跑烟雾测试，并建一个专属 side chat——以后
+所有任务通知都发到那儿。
 
 **方案 B —— 手动。**
 
@@ -65,9 +66,9 @@ MULTICA_TOKEN=mul_your_token_here ./install.sh --server https://your-multica-ser
 
 Multica 官方托管版用 `--saas` 代替 `--server`。先去 Multica 网页建 token：头像 → Settings → API Tokens。用环境变量传 token，不会进 shell 历史。
 
-**2. 让你的 Muse 注册 queue watcher。**
+**2. 让你的 Muse 注册 queue watcher 并建 side chat。**
 
-> "Register the multica-muse queue watcher hook."
+> "Register the multica-muse queue watcher hook, and create the dedicated side chat for task notifications."
 
 这一步要 agent 工具。shell 脚本做不了。你的 Muse 会先 dry run（空队列，再放一个测试任务），通过后才启用 hook。
 
@@ -100,7 +101,7 @@ daemon 从 `~/.config/multica-muse/daemon.env` 读 `MUSE_ENDPOINT` 和 `MUSE_TOK
 - **hook 一直不触发。**hook 要 `hooks.enable`，而且 dry run 必须两个分支都过（空队列 → silent，测试任务 → wake）。让你的 Muse 查状态。
 - **登录报 "unknown flag"。**新版 daemon 用 `multica login --token`，不是 `multica auth login --token`。
 - **daemon 连不上 receptionist。**查 `~/.config/multica-muse/daemon.env` 里的 `MUSE_ENDPOINT`。host 和端口要对上。
-- **机器没有 systemd。**用 `./start.sh` 后台启动 receptionist，不用 service 文件。
+- **Muse 云电脑没有 systemd。**用 `./start.sh` 后台启动 receptionist，不用 service 文件。
 
 ## 贡献
 
