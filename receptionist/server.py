@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 ROOT = Path.home() / "workspace" / "multica-muse"
 QUEUE_DIR = ROOT / "queue"
 TASKS_DIR = ROOT / "tasks"
@@ -277,6 +277,15 @@ class Receptionist(BaseHTTPRequestHandler):
         workdir = body.get("workdir")
         if workdir is not None and not isinstance(workdir, str):
             return json_response(self, 400, {"error": "workdir must be a string"})
+        task_token = body.get("task_token")
+        if task_token is not None and not isinstance(task_token, str):
+            return json_response(self, 400, {"error": "task_token must be a string"})
+        # task_token is the task-scoped Multica API credential (mat_...)
+        # forwarded by the Go muse backend from daemon ExecOptions.TaskToken.
+        # It is handed to the worker (via request.json) so the worker can
+        # run `multica` CLI with MULTICA_TOKEN=<task_token>, passing the
+        # CLI's daemon-context check — the same identity CLI backends get.
+        # Task-scoped and short-lived; never logged.
         # workdir is the daemon-prepared task working directory. The daemon
         # and this receptionist must share a filesystem (supported
         # deployment: both on this host); the worker runs the agent with
@@ -314,6 +323,7 @@ class Receptionist(BaseHTTPRequestHandler):
             "session_id": session_id,
             "timeout_s": timeout_s,
             "workdir": workdir,
+            "task_token": task_token,
             "created_at": now,
         }
         atomic_write(QUEUE_DIR / f"{task_id}.json",

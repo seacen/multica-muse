@@ -51,28 +51,36 @@ using the `workdir` from `request.json` as your working directory.
 
 ### Writing back to Multica (comments, issue reads)
 
-You have NO Multica API token of your own — do NOT try `multica` CLI
-(it requires a task token the muse backend never issues) and do NOT go
-looking for credential files. Instead, use the receptionist's write-back
-proxy. It forwards scoped API calls using the daemon's credentials;
-you never see the token.
+You receive a task-scoped API credential for this: `request.json` contains
+`task_token` (a `mat_...` token minted by the Multica server for this task).
+Export it and use the `multica` CLI directly — this passes the CLI's
+daemon-context check, same as CLI backends (Hermes/Codex) get:
 
-First read the proxy token (receptionist bearer token):
-`REC_TOKEN` is in `~/.config/multica-muse/receptionist.env`
-(`MUSE_RECEPTIONIST_TOKEN=<value>`).
+```bash
+export MULTICA_TOKEN=$(jq -r '.task_token' ~/workspace/multica-muse/tasks/<task_id>/request.json)
+~/workspace/multica-muse/bin/multica --profile muse issue get <issue-id> --output json
+```
 
-Proxy endpoint: `POST http://127.0.0.1:8765/v1/multica/proxy`
-with header `Authorization: Bearer $REC_TOKEN` and JSON body:
+To post a comment (note: `workspace_slug` goes in the query string):
+```bash
+export MULTICA_TOKEN=$(jq -r '.task_token' ~/workspace/multica-muse/tasks/<task_id>/request.json)
+# via CLI if it supports comments, otherwise via the proxy below
+```
+
+Fallback — receptionist write-back proxy (use only if `task_token` is
+missing/null, e.g. old daemon): `POST http://127.0.0.1:8765/v1/multica/proxy`
+with header `Authorization: Bearer $REC_TOKEN` (`MUSE_RECEPTIONIST_TOKEN`
+from `~/.config/multica-muse/receptionist.env`) and JSON body:
 `{"method": "GET"|"POST", "path": "/api/...", "query": "workspace_slug=<slug>", "body": {...}}`
 
-Allowlisted paths (others get 403):
+Allowlisted proxy paths (others get 403):
 - `GET /api/issues/{issue_id}` — read issue details
 - `GET /api/issues/{issue_id}/comments` — list comments
 - `POST /api/issues/{issue_id}/comments` — post a comment, body `{"content": "..."}`
 - `GET /api/chat/sessions/{session_id}/messages` — read chat history
 - `POST /api/chat/sessions/{session_id}/messages` — send a chat message
 
-Example — post a comment on the issue you are working on:
+Example via proxy:
 ```bash
 REC_TOKEN=$(grep '^MUSE_RECEPTIONIST_TOKEN=' ~/.config/multica-muse/receptionist.env | cut -d= -f2)
 curl -s -X POST http://127.0.0.1:8765/v1/multica/proxy \
@@ -81,9 +89,10 @@ curl -s -X POST http://127.0.0.1:8765/v1/multica/proxy \
 ```
 
 When your task says "reply with a comment" or "post the result to the
-issue", do it via this proxy — do not leave the write-back undone.
-The `result.md` you write is still the authoritative task result;
+issue", do it via CLI (preferred) or proxy — do not leave the write-back
+undone. The `result.md` you write is still the authoritative task result;
 the comment is the user-visible delivery.
+Never write any token into task files, logs, or events.
 
 While working, append progress events to
 `~/workspace/multica-muse/tasks/<task_id>/events.jsonl`, one JSON object
