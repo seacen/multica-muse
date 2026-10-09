@@ -51,12 +51,6 @@ receptionist 只有一个 Python 文件。只用标准库。没有依赖要装�
 安装：装接待员、登录 daemon、注册 queue watcher、跑烟雾测试，并建一个
 专属 side chat——以后所有任务通知都发到那儿。
 
-**其他 agent**（Claude Code、Cursor 等）：
-
-```bash
-npx skills add seacen/multica-muse@multica-muse-setup
-```
-
 **方案 B —— 手动。**
 
 **1. 运行安装脚本。**

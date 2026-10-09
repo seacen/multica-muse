@@ -52,12 +52,6 @@ the full setup: install the receptionist, log in the daemon, register the
 queue watcher, run a smoke test, and create a dedicated side chat where all
 task notifications land.
 
-**Other agents** (Claude Code, Cursor, etc.):
-
-```bash
-npx skills add seacen/multica-muse@multica-muse-setup
-```
-
 **Option B — manual.**
 
 **1. Run the installer.**
