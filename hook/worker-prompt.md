@@ -61,35 +61,17 @@ export MULTICA_TOKEN=$(jq -r '.task_token' ~/workspace/multica-muse/tasks/<task_
 ~/workspace/multica-muse/bin/multica --profile muse issue get <issue-id> --output json
 ```
 
-To post a comment (note: `workspace_slug` goes in the query string):
+To post a comment (note: `workspace_slug` goes in the query string, not the body):
 ```bash
 export MULTICA_TOKEN=$(jq -r '.task_token' ~/workspace/multica-muse/tasks/<task_id>/request.json)
-# via CLI if it supports comments, otherwise via the proxy below
+curl -s -X POST "https://multica.seacen.dev/api/issues/<issue-id>/comments?workspace_slug=seacen" \
+  -H "Authorization: Bearer $MULTICA_TOKEN" -H "Content-Type: application/json" \
+  -d '{"content":"你的评论内容"}'
 ```
-
-Fallback — receptionist write-back proxy (use only if `task_token` is
-missing/null, e.g. old daemon): `POST http://127.0.0.1:8765/v1/multica/proxy`
-with header `Authorization: Bearer $REC_TOKEN` (`MUSE_RECEPTIONIST_TOKEN`
-from `~/.config/multica-muse/receptionist.env`) and JSON body:
-`{"method": "GET"|"POST", "path": "/api/...", "query": "workspace_slug=<slug>", "body": {...}}`
-
-Allowlisted proxy paths (others get 403):
-- `GET /api/issues/{issue_id}` — read issue details
-- `GET /api/issues/{issue_id}/comments` — list comments
-- `POST /api/issues/{issue_id}/comments` — post a comment, body `{"content": "..."}`
-- `GET /api/chat/sessions/{session_id}/messages` — read chat history
-- `POST /api/chat/sessions/{session_id}/messages` — send a chat message
-
-Example via proxy:
-```bash
-REC_TOKEN=$(grep '^MUSE_RECEPTIONIST_TOKEN=' ~/.config/multica-muse/receptionist.env | cut -d= -f2)
-curl -s -X POST http://127.0.0.1:8765/v1/multica/proxy \
-  -H "Authorization: Bearer $REC_TOKEN" -H "Content-Type: application/json" \
-  -d '{"method":"POST","path":"/api/issues/<issue-id>/comments","query":"workspace_slug=seacen","body":{"content":"你的评论内容"}}'
-```
+(Get the server URL from `~/workspace/multica-muse/bin/multica --profile muse config get server_url`, or ask the user.)
 
 When your task says "reply with a comment" or "post the result to the
-issue", do it via CLI (preferred) or proxy — do not leave the write-back
+issue", do it via the CLI or curl above — do not leave the write-back
 undone. The `result.md` you write is still the authoritative task result;
 the comment is the user-visible delivery.
 Never write any token into task files, logs, or events.

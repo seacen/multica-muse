@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 ROOT = Path.home() / "workspace" / "multica-muse"
 QUEUE_DIR = ROOT / "queue"
 TASKS_DIR = ROOT / "tasks"
@@ -56,72 +56,6 @@ def atomic_write(path: Path, data: str) -> None:
 # (Result.SessionID = "muse:" + task_id). When the daemon resumes a
 # session, it passes that value back as POST /v1/execute's session_id.
 MUSE_SESSION_PREFIX = "muse:"
-# Allowlist for POST /v1/multica/proxy: the worker's write-back channel to
-# Multica. The worker has no API token of its own (the muse backend never
-# issues one), so the receptionist forwards on its behalf using the daemon's
-# credentials. Only safe, scoped endpoints are exposed — no admin routes.
-MULTICA_PROXY_ALLOWLIST = [
-    # (method, path regex)
-    ("GET",  r"^/api/issues/[0-9a-f-]{36}/?$"),
-    ("GET",  r"^/api/issues/[0-9a-f-]{36}/comments/?$"),
-    ("POST", r"^/api/issues/[0-9a-f-]{36}/comments/?$"),
-    ("GET",  r"^/api/chat/sessions/[0-9a-f-]{36}/messages/?$"),
-    ("POST", r"^/api/chat/sessions/[0-9a-f-]{36}/messages/?$"),
-]
-
-_daemon_env_cache: dict | None = None
-
-
-def load_daemon_env() -> dict:
-    """Return {"endpoint": ..., "token": ...} for the Multica server.
-
-    Reads the daemon's profile config (~/.multica/profiles/<profile>/
-    config.json, profile from MULTICA_DAEMON_PROFILE or "muse").
-    Falls back to daemon.env's MUSE_ENDPOINT/MUSE_TOKEN when that points
-    at a real server (not the receptionist's own localhost address).
-
-    The receptionist and the daemon run on the same host as the same user;
-    this is the supported deployment. Cached after first read.
-    """
-    global _daemon_env_cache
-    if _daemon_env_cache is not None:
-        return _daemon_env_cache
-    result: dict = {}
-    profile = os.environ.get("MULTICA_DAEMON_PROFILE", "muse")
-    try:
-        cfg = json.loads((Path.home() / ".multica" / "profiles" / profile / "config.json").read_text())
-        if cfg.get("server_url"):
-            result["endpoint"] = str(cfg["server_url"]).rstrip("/")
-        if cfg.get("token"):
-            result["token"] = str(cfg["token"])
-    except (OSError, ValueError):
-        pass
-    if not result.get("endpoint") or not result.get("token"):
-        # Fallback: daemon.env (MUSE_ENDPOINT there is usually the
-        # receptionist itself — only use it if it points elsewhere).
-        try:
-            for line in (Path.home() / ".config" / "multica-muse" / "daemon.env").read_text().splitlines():
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    k, v = k.strip(), v.strip()
-                    if k == "MUSE_ENDPOINT" and v and "127.0.0.1" not in v and "localhost" not in v:
-                        result.setdefault("endpoint", v.rstrip("/"))
-                    elif k == "MUSE_TOKEN" and v:
-                        result.setdefault("token", v)
-        except OSError:
-            pass
-    _daemon_env_cache = result
-    return result
-
-
-def multica_proxy_allowed(method: str, path: str) -> bool:
-    for allowed_method, pattern in MULTICA_PROXY_ALLOWLIST:
-        if method == allowed_method and re.fullmatch(pattern, path):
-            return True
-    return False
-
-
 def load_previous_session_context(session_id) -> str | None:
     """Return the previous task's result summary for session resume.
 
@@ -250,8 +184,6 @@ class Receptionist(BaseHTTPRequestHandler):
             return json_response(self, 401, {"error": "unauthorized"})
         if path == "/v1/execute":
             return self._execute()
-        if path == "/v1/multica/proxy":
-            return self._multica_proxy()
         m = re.fullmatch(r"/v1/tasks/([^/]+)/cancel", path)
         if m:
             return self._cancel(m.group(1))
@@ -380,68 +312,6 @@ class Receptionist(BaseHTTPRequestHandler):
                     "tool": str(ev.get("tool", "")),
                 })
         return json_response(self, 200, {"task_id": task_id, "events": events})
-
-    def _multica_proxy(self):
-        """Forward a scoped Multica API call on the worker's behalf.
-
-        Request: {"method": "GET"|"POST", "path": "/api/...", "body": {...},
-                   "query": "workspace_slug=seacen"}
-        Only allowlisted paths are forwarded (see MULTICA_PROXY_ALLOWLIST).
-        The daemon's MUSE_ENDPOINT/MUSE_TOKEN are used; the worker never
-        sees the token.
-        """
-        import urllib.request
-        import urllib.error
-
-        body, err = self._read_json_body()
-        if err:
-            return json_response(self, 400, {"error": err})
-        method = body.get("method", "GET").upper()
-        api_path = body.get("path", "")
-        payload = body.get("body")
-        query = body.get("query", "")
-        if method not in ("GET", "POST"):
-            return json_response(self, 400, {"error": "method must be GET or POST"})
-        if not isinstance(api_path, str) or not api_path.startswith("/api/"):
-            return json_response(self, 400, {"error": "path must start with /api/"})
-        if not multica_proxy_allowed(method, api_path):
-            return json_response(self, 403, {"error": "path not allowlisted for worker proxy"})
-
-        denv = load_daemon_env()
-        endpoint = denv.get("endpoint", "")
-        token = denv.get("token", "")
-        if not endpoint or not token:
-            return json_response(self, 500, {"error": "daemon credentials not configured"})
-        url = endpoint + api_path
-        if query:
-            url += ("&" if "?" in url else "?") + query.lstrip("?")
-        data = None
-        headers = {"Authorization": "Bearer " + token}
-        if payload is not None:
-            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            headers["Content-Type"] = "application/json"
-        req = urllib.request.Request(url, data=data, headers=headers, method=method)
-        try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                raw = resp.read()
-                ctype = resp.headers.get("Content-Type", "")
-        except urllib.error.HTTPError as e:
-            try:
-                err_body = e.read().decode("utf-8", "replace")[:2000]
-            except Exception:
-                err_body = ""
-            return json_response(self, 502, {
-                "error": f"multica api returned {e.code}",
-                "detail": err_body,
-            })
-        except Exception as e:
-            return json_response(self, 502, {"error": f"proxy failed: {e}"})
-        if "json" in ctype:
-            try:
-                return json_response(self, 200, {"data": json.loads(raw.decode("utf-8"))})
-            except ValueError:
-                pass
-        return json_response(self, 200, {"data": raw.decode("utf-8", "replace")[:10000]})
 
     def _cancel(self, task_id: str):
         if not TASK_ID_RE.fullmatch(task_id):
