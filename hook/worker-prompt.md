@@ -61,10 +61,12 @@ export MULTICA_TOKEN=$(jq -r '.task_token' ~/workspace/multica-muse/tasks/<task_
 ~/workspace/multica-muse/bin/multica --profile muse issue get <issue-id> --output json
 ```
 
-To post a comment (note: `workspace_slug` goes in the query string, not the body):
+To post a comment via REST (note: `workspace_id` goes in the query string, not the body):
 ```bash
 export MULTICA_TOKEN=$(jq -r '.task_token' ~/workspace/multica-muse/tasks/<task_id>/request.json)
-curl -s -X POST "https://multica.seacen.dev/api/issues/<issue-id>/comments?workspace_slug=seacen" \
+SERVER=$(jq -r '.server_url' ~/workspace/multica-muse/tasks/<task_id>/request.json)
+WS=$(jq -r '.workspace_id' ~/workspace/multica-muse/tasks/<task_id>/request.json)
+curl -s -X POST "$SERVER/api/issues/<issue-id>/comments?workspace_id=$WS" \
   -H "Authorization: Bearer $MULTICA_TOKEN" -H "Content-Type: application/json" \
   -d '{"content":"你的评论内容"}'
 ```
