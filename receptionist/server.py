@@ -56,6 +56,8 @@ def atomic_write(path: Path, data: str) -> None:
 # (Result.SessionID = "muse:" + task_id). When the daemon resumes a
 # session, it passes that value back as POST /v1/execute's session_id.
 MUSE_SESSION_PREFIX = "muse:"
+# Cap on injected previous-session context, to bound prompt growth.
+MAX_PREV_CONTEXT_CHARS = 4000
 def load_previous_session_context(session_id) -> str | None:
     """Return the previous task's result summary for session resume.
 
@@ -218,12 +220,6 @@ class Receptionist(BaseHTTPRequestHandler):
         # run `multica` CLI with MULTICA_TOKEN=<task_token>, passing the
         # CLI's daemon-context check — the same identity CLI backends get.
         # Task-scoped and short-lived; never logged.
-        server_url = body.get("server_url")
-        if server_url is not None and not isinstance(server_url, str):
-            return json_response(self, 400, {"error": "server_url must be a string"})
-        workspace_id = body.get("workspace_id")
-        if workspace_id is not None and not isinstance(workspace_id, str):
-            return json_response(self, 400, {"error": "workspace_id must be a string"})
         # workdir is the daemon-prepared task working directory. The daemon
         # and this receptionist must share a filesystem (supported
         # deployment: both on this host); the worker runs the agent with
@@ -262,8 +258,6 @@ class Receptionist(BaseHTTPRequestHandler):
             "timeout_s": timeout_s,
             "workdir": workdir,
             "task_token": task_token,
-            "server_url": server_url,
-            "workspace_id": workspace_id,
             "created_at": now,
         }
         atomic_write(QUEUE_DIR / f"{task_id}.json",
