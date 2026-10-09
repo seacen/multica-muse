@@ -2,9 +2,9 @@
 
 You were woken because a Multica agent delegated a task to Muse via the
 receptionist queue. The wake payload contains `{"task_id": "<id>"}`.
-Execute the task below. **This execution must never be silent**: every task
-gets its own visible side chat in the user's Muse app (start message,
-progress, finish summary). The user explicitly asked for this.
+Execute the task below. **This execution must never be silent**: report
+progress and the finish summary to the user's dedicated Multica side chat
+(the hook's delivery target). Do NOT create a new side chat per task.
 
 ## 1. Claim the task (atomic)
 
@@ -21,28 +21,16 @@ Update `~/workspace/multica-muse/tasks/<task_id>/status.json`:
 set `status` to `"running"` and `updated_at` to the current UTC time
 (keep the other fields). Write it atomically (write temp file, then rename).
 
-## 3. Side chat（当前由主代理事后创建，worker 跳过）
+## 3. Reporting (dedicated side chat, no per-task chats)
 
-实测结论（2026-10-09）：hook worker 没有 `chat.create`/`chat.send_message`
-能力（`chat.*` 是主会话专属）。所以 worker **不要尝试建会话**，
-只保证任务目录完整；主代理收到 worker 的完成 handoff 后，
-会为每个任务创建独立 side chat 并发布结果归档。
+All Multica work is reported in the user's dedicated Multica side chat
+(the hook's delivery target) — do NOT create a new side chat per task.
 
-worker 在此步只做一件事：把 `started_at`（UTC ISO8601）写入
+Worker 在此步只做一件事：把 `started_at`（UTC ISO8601）写入
 `~/workspace/multica-muse/tasks/<task_id>/notify.json`
-（`{"task_id": ..., "started_at": ...}`，没有 chat_id）。
-如果将来某天 `chat.create` 可用了，再恢复下面的原始流程。
+(`{"task_id": ..., "started_at": ...}`)。
 
-<details><summary>原始流程（worker 有 chat 能力时恢复）</summary>
-
-1. `chat.create` with `context_mode="fresh"` and
-   `name="🛰️ Multica任务 <task_id前8位>: <prompt前40字>"`.
-2. Save the returned `chat_id` into `notify.json`.
-3. `chat.send_message` to that `chat_id` with an instruction for the
-   chat's agent to publish the visible start message (in Simplified Chinese).
-4. One-liner into the main chat so the user notices.
-
-</details>
+主代理收到 worker 的完成 handoff 后，直接在专属 side chat 里发布结果。
 
 ## 4. Execute
 
@@ -61,12 +49,10 @@ export MULTICA_TOKEN=$(jq -r '.task_token' ~/workspace/multica-muse/tasks/<task_
 ~/workspace/multica-muse/bin/multica --profile muse issue get <issue-id> --output json
 ```
 
-To post a comment via REST (note: `workspace_id` goes in the query string, not the body):
+To post a comment (note: `workspace_slug` goes in the query string, not the body):
 ```bash
 export MULTICA_TOKEN=$(jq -r '.task_token' ~/workspace/multica-muse/tasks/<task_id>/request.json)
-SERVER=$(jq -r '.server_url' ~/workspace/multica-muse/tasks/<task_id>/request.json)
-WS=$(jq -r '.workspace_id' ~/workspace/multica-muse/tasks/<task_id>/request.json)
-curl -s -X POST "$SERVER/api/issues/<issue-id>/comments?workspace_id=$WS" \
+curl -s -X POST "https://multica.seacen.dev/api/issues/<issue-id>/comments?workspace_slug=seacen" \
   -H "Authorization: Bearer $MULTICA_TOKEN" -H "Content-Type: application/json" \
   -d '{"content":"你的评论内容"}'
 ```
@@ -110,9 +96,8 @@ per line:
 
 ## 6. Finish handoff（主代理据此建归档会话）
 
-`chat.send_message` worker 不可用，此步改为：确保任务目录完整，
-并让最终的 execute summary（即 handoff 内容）包含以下字段，
-主代理收到后会创建独立 side chat 并发布归档：
+确保任务目录完整，并让最终的 execute summary（即 handoff 内容）包含以下字段，
+主代理收到后直接在专属 side chat 里发布结果（不再为每个任务建独立 side chat）：
 
 - `task_id`
 - `status`（completed / failed / cancelled）
@@ -135,6 +120,5 @@ status=<completed|failed|cancelled> preview=<result_preview>
   `request.json`, `status.json`, `events.jsonl`, `result.md`, `notify.json`.
 - If the prompt asks for something unsafe or impossible, mark the task
   `failed` with a clear `error` instead of improvising, and publish the
-  failure to the side chat.
-- The user can ask follow-up questions inside the task's side chat; its
-  agent answers from the task directory files.
+  failure to the dedicated Multica side chat.
+- The user can ask follow-up questions in the dedicated Multica side chat; answers come from the task directory files.
