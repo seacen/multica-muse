@@ -10,7 +10,9 @@
 
 **Give your Multica agents a personal AI.**
 
-Multica agents run coding CLIs. With multica-muse, they can delegate tasks to your Muse app instead — the AI that has your browser, your tools, and your memory.
+Multica agents run coding CLIs. Muse is not a CLI — it is your personal AI,
+with your context, your tools, and your memory. multica-muse bridges the two
+over HTTP, so your Multica agents can delegate tasks to it.
 
 ## Why
 

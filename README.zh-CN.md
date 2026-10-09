@@ -10,7 +10,9 @@
 
 **给你的 Multica 智能体配一个私人 AI。**
 
-Multica 智能体只能跑代码 CLI。有了 multica-muse，它们可以把任务交给你的 Muse 应用——那个有浏览器、有工具、有记忆的 AI。
+Multica 智能体只能跑代码 CLI。Muse 不是 CLI——它是你的私人 AI，有你的
+上下文、你的工具、你的记忆。multica-muse 用 HTTP 把两者连起来，让你的
+Multica 智能体可以把任务交给它。
 
 ## 为什么有用
 
