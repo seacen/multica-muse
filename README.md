@@ -27,7 +27,7 @@ Multica server
 multica daemon  (muse backend, Go)
     │  POST /v1/execute
     ▼
-receptionist  (Python, your machine, 127.0.0.1:8765)
+receptionist  (Python, your Muse cloud computer, 127.0.0.1:8765)
     │  queues the task
     ▼
 queue watcher  (event hook, checks every 5s)
@@ -42,6 +42,19 @@ result travels back up the chain → appears in Multica
 The receptionist is one Python file. It uses the standard library only. No dependencies to install.
 
 ## Quickstart
+
+**Option A — the Skill (recommended).**
+
+```bash
+npx skills add seacen/multica-muse@multica-muse-setup
+```
+
+Then tell your Muse: "Set up multica-muse." The
+[skill](skills/multica-muse-setup/SKILL.md) does everything: install the
+receptionist, log in the daemon, register the queue watcher, run a smoke
+test, create the notification side chat.
+
+**Option B — manual.**
 
 **1. Run the installer.**
 
@@ -88,7 +101,7 @@ The daemon reads `MUSE_ENDPOINT` and `MUSE_TOKEN` from `~/.config/multica-muse/d
 - **The hook never fires.** The hook needs `hooks.enable`, and only after the dry run passes both branches (empty queue → silent, test task → wake). Ask your Muse to check its status.
 - **Login fails with "unknown flag".** Newer daemon builds use `multica login --token`, not `multica auth login --token`.
 - **The daemon cannot reach the receptionist.** Check `MUSE_ENDPOINT` in `~/.config/multica-muse/daemon.env`. Host and port must match the receptionist.
-- **No systemd on your machine.** Start the receptionist in the background with `./start.sh` instead of the service file.
+- **No systemd on your Muse cloud computer.** Start the receptionist in the background with `./start.sh` instead of the service file.
 
 ## Contributing
 

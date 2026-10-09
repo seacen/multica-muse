@@ -27,7 +27,7 @@ Multica server
 multica daemon（muse backend，Go）
     │  POST /v1/execute
     ▼
-receptionist（Python，跑在你的机器上，127.0.0.1:8765）
+receptionist（Python，跑在你的 Muse 云电脑上，127.0.0.1:8765）
     │  任务入队
     ▼
 queue watcher（事件 hook，每 5 秒检查一次）
@@ -42,6 +42,18 @@ worker（你的 Muse 应用）
 receptionist 只有一个 Python 文件。只用标准库。没有依赖要装。
 
 ## 快速开始
+
+**方案 A —— 用 Skill（推荐）。**
+
+```bash
+npx skills add seacen/multica-muse@multica-muse-setup
+```
+
+然后跟你的 Muse 说："装一下 multica-muse。"
+[Skill](skills/multica-muse-setup/SKILL.md) 会搞定一切：装接待员、登录
+daemon、注册 queue watcher、跑烟雾测试、建通知 side chat。
+
+**方案 B —— 手动。**
 
 **1. 运行安装脚本。**
 
