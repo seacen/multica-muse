@@ -5,7 +5,11 @@ A tiny local HTTP API that lets the Multica `muse` backend delegate task
 execution to a Muse agent run. Stdlib only.
 
 Flow:
-  1. Go backend -> POST /v1/execute {prompt}            (task queued)
+  1. Go backend -> POST /v1/execute {prompt, session_id?}  (task queued)
+     session_id is "muse:<prev_task_id>" when resuming; the previous
+     task's result.md is injected into the prompt as session context
+     (Hermes-style resume via context injection, since hook workers
+     cannot resume a dead agent session).
   2. A hook's polling script sees queue/<id>.json and wakes a worker agent.
   3. Worker claims the task (atomic rename), runs the prompt with full
      capabilities, appends events to tasks/<id>/events.jsonl, writes
@@ -29,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 ROOT = Path.home() / "workspace" / "multica-muse"
 QUEUE_DIR = ROOT / "queue"
 TASKS_DIR = ROOT / "tasks"
@@ -46,6 +50,58 @@ def atomic_write(path: Path, data: str) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(data, encoding="utf-8")
     os.replace(tmp, path)
+
+
+# Prefix the Go muse backend puts on the session id it reports
+# (Result.SessionID = "muse:" + task_id). When the daemon resumes a
+# session, it passes that value back as POST /v1/execute's session_id.
+MUSE_SESSION_PREFIX = "muse:"
+# Cap on injected previous-session context, to bound prompt growth.
+MAX_PREV_CONTEXT_CHARS = 4000
+
+
+def load_previous_session_context(session_id) -> str | None:
+    """Return the previous task's result summary for session resume.
+
+    session_id has the form "muse:<task_id>" (set by the Go backend).
+    We read that task's result.md so the new worker starts with the
+    prior turn's outcome — the poor-man's equivalent of Hermes'
+    ACP session/resume, since hook workers can't resume a dead session.
+    Returns None when there is nothing usable to inject.
+    """
+    if not isinstance(session_id, str) or not session_id.startswith(MUSE_SESSION_PREFIX):
+        return None
+    prev_task_id = session_id[len(MUSE_SESSION_PREFIX):]
+    if not TASK_ID_RE.fullmatch(prev_task_id):
+        return None
+    result_path = TASKS_DIR / prev_task_id / "result.md"
+    try:
+        if not result_path.is_file():
+            return None
+        content = result_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not content:
+        return None
+    if len(content) > MAX_PREV_CONTEXT_CHARS:
+        content = content[:MAX_PREV_CONTEXT_CHARS] + "\n\n[truncated]"
+    return content
+
+
+def augment_prompt_with_session(prompt: str, session_id, prev_context: str | None) -> str:
+    """Prepend previous-session context to the prompt for resume."""
+    if not prev_context:
+        return prompt
+    return (
+        "## Previous session context\n"
+        f"This task continues session {session_id}. "
+        "Below is the summary of what was done in the previous turn — "
+        "build on it, do not repeat completed work:\n\n"
+        f"{prev_context}\n\n"
+        "---\n\n"
+        "## Current task\n"
+        f"{prompt}"
+    )
 
 
 def json_response(handler: BaseHTTPRequestHandler, code: int, obj: dict) -> None:
@@ -168,13 +224,20 @@ class Receptionist(BaseHTTPRequestHandler):
         task_dir = self._task_dir(task_id)
         task_dir.mkdir(parents=True, exist_ok=False)
 
+        # prompt_preview is computed from the original prompt so the
+        # injected session context doesn't crowd it out.
+        prompt_preview = prompt.strip()[:200]
+        prev_context = load_previous_session_context(session_id)
+        queued_prompt = augment_prompt_with_session(prompt, session_id, prev_context)
+
         status = {
             "task_id": task_id,
             "status": "queued",
             "session_id": session_id,
             "timeout_s": timeout_s,
             "workdir": workdir,
-            "prompt_preview": prompt.strip()[:200],
+            "prompt_preview": prompt_preview,
+            "resumed_from": session_id,
             "created_at": now,
             "updated_at": now,
         }
@@ -183,7 +246,7 @@ class Receptionist(BaseHTTPRequestHandler):
 
         queue_payload = {
             "task_id": task_id,
-            "prompt": prompt,
+            "prompt": queued_prompt,
             "session_id": session_id,
             "timeout_s": timeout_s,
             "workdir": workdir,
