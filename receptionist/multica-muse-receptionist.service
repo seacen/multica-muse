@@ -1,0 +1,24 @@
+[Unit]
+Description=Multica Muse receptionist (local task-queue HTTP API)
+After=network.target
+
+[Service]
+Type=simple
+# Absolute paths; %h expands to the service user's home at runtime.
+WorkingDirectory=%h/workspace/multica-muse/receptionist
+ExecStart=%h/workspace/multica-muse/receptionist/start.sh
+# Token lives in a user-created env file, NOT in this unit. Create it with:
+#   mkdir -p ~/.config/multica-muse
+#   printf 'MUSE_RECEPTIONIST_TOKEN=<your token>\n' > ~/.config/multica-muse/receptionist.env
+#   chmod 600 ~/.config/multica-muse/receptionist.env
+EnvironmentFile=-%h/.config/multica-muse/receptionist.env
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=120
+TimeoutStopSec=10
+KillMode=control-group
+
+[Install]
+# The guest boots default.target, not multi-user.target.
+WantedBy=default.target
