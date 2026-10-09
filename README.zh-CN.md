@@ -43,16 +43,19 @@ receptionist 只有一个 Python 文件。只用标准库。没有依赖要装�
 
 ## 快速开始
 
-**方案 A —— 用 Skill（推荐）。**
+**方案 A —— 经 Muse（推荐）。**
+
+> 跟你的 Muse 说："从 https://github.com/seacen/multica-muse 装一下 multica-muse。"
+
+你的 Muse 会取回 [Skill](skills/multica-muse-setup/SKILL.md) 并跑完整个
+安装：装接待员、登录 daemon、注册 queue watcher、跑烟雾测试，并建一个
+专属 side chat——以后所有任务通知都发到那儿。
+
+**其他 agent**（Claude Code、Cursor 等）：
 
 ```bash
 npx skills add seacen/multica-muse@multica-muse-setup
 ```
-
-然后跟你的 Muse 说："装一下 multica-muse。"
-[Skill](skills/multica-muse-setup/SKILL.md) 会搞定一切：装接待员、登录
-daemon、注册 queue watcher、跑烟雾测试，并建一个专属 side chat——以后
-所有任务通知都发到那儿。
 
 **方案 B —— 手动。**
 

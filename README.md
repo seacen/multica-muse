@@ -43,16 +43,20 @@ The receptionist is one Python file. It uses the standard library only. No depen
 
 ## Quickstart
 
-**Option A — the Skill (recommended).**
+**Option A — via Muse (recommended).**
+
+> Tell your Muse: "Set up multica-muse from https://github.com/seacen/multica-muse."
+
+Your Muse fetches the [skill](skills/multica-muse-setup/SKILL.md) and runs
+the full setup: install the receptionist, log in the daemon, register the
+queue watcher, run a smoke test, and create a dedicated side chat where all
+task notifications land.
+
+**Other agents** (Claude Code, Cursor, etc.):
 
 ```bash
 npx skills add seacen/multica-muse@multica-muse-setup
 ```
-
-Then tell your Muse: "Set up multica-muse." The
-[skill](skills/multica-muse-setup/SKILL.md) does everything: install the
-receptionist, log in the daemon, register the queue watcher, run a smoke
-test, and create a dedicated side chat where all task notifications land.
 
 **Option B — manual.**
 
