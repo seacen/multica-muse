@@ -487,7 +487,8 @@ class Receptionist(BaseHTTPRequestHandler):
 # Reclaim runs in a background thread every 30s, not just on status read,
 # so orphaned tasks are cleaned up even if nobody polls.
 
-RECLAIM_INTERVAL_S = 30
+# Overridable for integration tests.
+RECLAIM_INTERVAL_S = int(os.environ.get("MUSE_RECLAIM_INTERVAL_S", "30"))
 DEFAULT_TIMEOUT_S = 3600
 
 def reclaim_orphaned_tasks():
