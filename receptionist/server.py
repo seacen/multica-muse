@@ -208,7 +208,7 @@ class Receptionist(BaseHTTPRequestHandler):
             # Probed by the Go backend's ProbeMuseReceptionist (the muse
             # equivalent of CLI --version detection). Auth-required like
             # every other /v1 endpoint.
-            return json_response(self, 200, {"protocol_version": 1, "version": VERSION})
+            return json_response(self, 200, {"protocol_version": self.PROTOCOL_VERSION, "version": VERSION})
         m = re.fullmatch(r"/v1/tasks/([^/]+)", path)
         if m:
             return self._get_task(m.group(1))
@@ -240,10 +240,24 @@ class Receptionist(BaseHTTPRequestHandler):
         sys.stderr.write("%s %s\n" % (utcnow(), fmt % args))
 
     # -- endpoints ---------------------------------------------------------
+    # Wire protocol version. Must match the Go backend's museProtocolVersion.
+    # Increment when making breaking changes to the /v1/execute contract.
+    PROTOCOL_VERSION = 1
+
     def _execute(self):
         body, err = self._read_json_body()
         if err:
             return json_response(self, 400, {"error": err})
+        # Go-B3: Validate protocol version BEFORE creating the task.
+        # If the backend speaks a different version, reject now — don't
+        # queue a task that the backend will refuse to poll.
+        req_version = body.get("protocol_version")
+        if req_version is not None and req_version != self.PROTOCOL_VERSION:
+            return json_response(self, 400, {
+                "error": f"protocol skew: backend speaks v{req_version}, "
+                         f"receptionist implements v{self.PROTOCOL_VERSION}",
+                "protocol_version": self.PROTOCOL_VERSION,
+            })
         prompt = body.get("prompt")
         if not isinstance(prompt, str) or not prompt.strip():
             return json_response(self, 400, {"error": "prompt must be a non-empty string"})
@@ -325,7 +339,7 @@ class Receptionist(BaseHTTPRequestHandler):
         self.log_message("queued task %s (session=%s)", task_id, session_id)
         # Go-B3: Include protocol_version so the Go backend can detect
         # version skew at submit time (probe may be stale).
-        return json_response(self, 200, {"task_id": task_id, "status": "queued", "protocol_version": 1})
+        return json_response(self, 200, {"task_id": task_id, "status": "queued", "protocol_version": self.PROTOCOL_VERSION})
 
     def _get_task(self, task_id: str):
         if not TASK_ID_RE.fullmatch(task_id):
