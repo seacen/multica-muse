@@ -53,8 +53,14 @@ Export it and use the `multica` CLI directly — this passes the CLI's
 daemon-context check, same as CLI backends (Hermes/Codex) get:
 
 ```bash
-export MULTICA_TOKEN=$(jq -r '.task_token' ~/workspace/multica-muse/tasks/<task_id>/request.json)
-~/.local/bin/multica --profile muse issue get <issue-id> --output json
+# Set all three once at the start. The CLI reads MULTICA_SERVER_URL before
+# checking daemon-task context (upstream #6407), so this avoids the
+# "No server configured" path without --server-url on every command.
+REQ=~/workspace/multica-muse/tasks/<task_id>/request.json
+export MULTICA_TOKEN=$(jq -r '.task_token' $REQ)
+export MULTICA_SERVER_URL=$(jq -r '.server_url' $REQ)
+export MULTICA_WORKSPACE_ID=$(jq -r '.workspace_id' $REQ)
+~/.local/bin/multica issue get <issue-id> --output json
 ```
 
 To post a comment (note: `workspace_slug` goes in the query string, not the body):
