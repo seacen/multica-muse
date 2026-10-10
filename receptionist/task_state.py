@@ -96,6 +96,23 @@ def transition(tasks_dir: Path, task_id: str, new_status: str, error: str = None
         status["updated_at"] = utcnow()
         if new_status in ("completed", "failed", "cancelled"):
             status["finished_at"] = status["updated_at"]
+            # Scrub the task token from request.json on terminal states.
+            # The server invalidates the token, but there's no reason to
+            # keep a credential-shaped value on disk.
+            req_path = task_dir / "request.json"
+            try:
+                if req_path.is_file():
+                    req = json.loads(req_path.read_text(encoding="utf-8"))
+                    if "task_token" in req:
+                        del req["task_token"]
+                        tmp_req = req_path.with_suffix(".json.tmp")
+                        tmp_req.write_text(
+                            json.dumps(req, ensure_ascii=False, indent=2),
+                            encoding="utf-8",
+                        )
+                        tmp_req.replace(req_path)
+            except (ValueError, OSError):
+                pass  # Best-effort; don't fail the transition.
         if error is not None:
             status["error"] = error
         if new_status == "running" and "started_at" not in status:

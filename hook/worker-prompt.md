@@ -66,9 +66,15 @@ export MULTICA_TOKEN=$(jq -r '.task_token' $REQ)
 SERVER_URL=$(jq -r '.server_url' $REQ)
 # Note: with task-token auth, the server binds the workspace from the token.
 # Don't put workspace_id (a UUID) in workspace_slug — it's ignored anyway.
+# Write the auth header to a file (0600) — don't put the token on the
+# command line where `ps` can see it.
+HDR=$(mktemp)
+chmod 600 "$HDR"
+printf 'Authorization: Bearer %s\n' "$MULTICA_TOKEN" > "$HDR"
 curl -s -w "\nHTTP %{http_code}\n" -X POST "$SERVER_URL/api/issues/<issue-id>/comments" \
-  -H "Authorization: Bearer $MULTICA_TOKEN" -H "Content-Type: application/json" \
+  -H @"$HDR" -H "Content-Type: application/json" \
   -d '{"content":"你的评论内容"}'
+rm -f "$HDR"
 ```
 
 When your task says "reply with a comment" or "post the result to the
