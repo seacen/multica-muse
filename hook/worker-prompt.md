@@ -62,8 +62,9 @@ To post a comment (note: `workspace_slug` goes in the query string, not the body
 REQ=~/workspace/multica-muse/tasks/<task_id>/request.json
 export MULTICA_TOKEN=$(jq -r '.task_token' $REQ)
 SERVER_URL=$(jq -r '.server_url' $REQ)
-WORKSPACE_ID=$(jq -r '.workspace_id' $REQ)
-curl -s -X POST "$SERVER_URL/api/issues/<issue-id>/comments?workspace_slug=$WORKSPACE_ID" \
+# Note: with task-token auth, the server binds the workspace from the token.
+# Don't put workspace_id (a UUID) in workspace_slug — it's ignored anyway.
+curl -s -w "\nHTTP %{http_code}\n" -X POST "$SERVER_URL/api/issues/<issue-id>/comments" \
   -H "Authorization: Bearer $MULTICA_TOKEN" -H "Content-Type: application/json" \
   -d '{"content":"你的评论内容"}'
 ```

@@ -49,13 +49,19 @@ def utcnow() -> str:
 def atomic_write(path: Path, data: str, mode: int = 0o600) -> None:
     # N2: Sensitive files (task_token in queue/request JSON) must be
     # owner-only. Don't rely on the caller's umask.
+    # R1: os.fdopen takes ownership of fd — it closes on exception.
+    # Don't close again in except (EBADF would mask the real error).
     tmp = path.with_suffix(path.suffix + ".tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             f.write(data)
     except:
-        os.close(fd)
+        # Clean up the temp file, but don't touch fd (fdopen owns it).
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
         raise
     os.replace(tmp, path)
 
@@ -316,7 +322,9 @@ class Receptionist(BaseHTTPRequestHandler):
                      json.dumps(queue_payload, ensure_ascii=False))
 
         self.log_message("queued task %s (session=%s)", task_id, session_id)
-        return json_response(self, 200, {"task_id": task_id, "status": "queued"})
+        # Go-B3: Include protocol_version so the Go backend can detect
+        # version skew at submit time (probe may be stale).
+        return json_response(self, 200, {"task_id": task_id, "status": "queued", "protocol_version": 1})
 
     def _get_task(self, task_id: str):
         if not TASK_ID_RE.fullmatch(task_id):
