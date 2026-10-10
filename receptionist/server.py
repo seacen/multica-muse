@@ -73,20 +73,9 @@ def task_lock(task_id: str):
             pass
         yield
 
-def scrub_task_token(task_dir: Path) -> None:
-    """Remove task_token from request.json (best-effort).
-    Called on every terminal transition so no credential-shaped value
-    stays on disk, regardless of which path marked the task terminal."""
-    req_path = task_dir / "request.json"
-    try:
-        if req_path.is_file():
-            req = json.loads(req_path.read_text(encoding="utf-8"))
-            if "task_token" in req:
-                del req["task_token"]
-                atomic_write(req_path,
-                             json.dumps(req, ensure_ascii=False, indent=2))
-    except (ValueError, OSError):
-        pass
+# scrub_task_token lives in task_state.py (single implementation).
+# server.py imports it so all three terminal paths share one code path.
+from task_state import scrub_task_token
 
 
 def atomic_write(path: Path, data: str, mode: int = 0o600) -> None:

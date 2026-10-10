@@ -35,6 +35,41 @@ def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def atomic_write_0600(path: Path, data: str) -> None:
+    """Atomic write with 0600 permissions (R1 pattern).
+    os.fdopen takes ownership of fd — it closes on exception.
+    Don't close again (EBADF would mask the real error)."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(data)
+    except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+    tmp.replace(path)
+
+
+def scrub_task_token(task_dir: Path) -> None:
+    """Remove task_token from request.json (best-effort).
+    Called on every terminal transition so no credential-shaped value
+    stays on disk, regardless of which path marked the task terminal.
+    Uses 0600 via atomic_write_0600 (consistent with server.py)."""
+    req_path = task_dir / "request.json"
+    try:
+        if req_path.is_file():
+            req = json.loads(req_path.read_text(encoding="utf-8"))
+            if "task_token" in req:
+                del req["task_token"]
+                atomic_write_0600(req_path,
+                                  json.dumps(req, ensure_ascii=False, indent=2))
+    except (ValueError, OSError):
+        pass  # Best-effort; don't fail the caller.
+
+
 # Valid state transitions. Terminal states have no outgoing transitions.
 TRANSITIONS = {
     "queued": {"running", "cancelled"},
@@ -97,36 +132,7 @@ def transition(tasks_dir: Path, task_id: str, new_status: str, error: str = None
         status["updated_at"] = utcnow()
         if new_status in ("completed", "failed", "cancelled"):
             status["finished_at"] = status["updated_at"]
-            # Scrub the task token from request.json on terminal states.
-            # The server invalidates the token, but there's no reason to
-            # keep a credential-shaped value on disk.
-            # Use 0600 via atomic write (consistent with server.py).
-            # os.open with O_CREAT|O_EXCL ensures the mode applies.
-            req_path = task_dir / "request.json"
-            try:
-                if req_path.is_file():
-                    req = json.loads(req_path.read_text(encoding="utf-8"))
-                    if "task_token" in req:
-                        del req["task_token"]
-                        # P3-2: R1 pattern — os.fdopen takes ownership of fd,
-                        # it closes on exception. Don't close again (EBADF
-                        # would mask the real error).
-                        tmp_req = req_path.with_suffix(".json.tmp")
-                        fd = os.open(tmp_req, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                        try:
-                            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                                f.write(json.dumps(req, ensure_ascii=False, indent=2))
-                        except Exception:
-                            # fdopen already closed fd on failure; just
-                            # clean up the temp file.
-                            try:
-                                tmp_req.unlink(missing_ok=True)
-                            except OSError:
-                                pass
-                            raise
-                        tmp_req.replace(req_path)
-            except (ValueError, OSError):
-                pass  # Best-effort; don't fail the transition.
+            scrub_task_token(task_dir)
         if error is not None:
             status["error"] = error
         if new_status == "running" and "started_at" not in status:

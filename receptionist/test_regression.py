@@ -12,6 +12,7 @@ Run: python3 -m pytest test_regression.py -v
 """
 
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -95,10 +96,78 @@ def test_n5_json_validation():
     print("PASS: test_n5_json_validation")
 
 
+def test_scrub_on_helper_completed():
+    """Token scrub: worker marks completed via helper -> no task_token."""
+    import stat
+    with tempfile.TemporaryDirectory() as tmp:
+        tasks_dir = Path(tmp)
+        task_id = "scrub-test-1"
+        task_dir = tasks_dir / task_id
+        task_dir.mkdir()
+        (task_dir / "status.json").write_text(json.dumps({"status": "running"}))
+        (task_dir / "request.json").write_text(json.dumps({
+            "prompt": "test",
+            "task_token": "mat_test_token_123",
+        }))
+        # Set 0600 on request.json like the real flow
+        os.chmod(task_dir / "request.json", 0o600)
+
+        rc = transition(tasks_dir, task_id, "completed")
+        assert rc == 0, f"transition failed: {rc}"
+
+        req = json.loads((task_dir / "request.json").read_text())
+        assert "task_token" not in req, "task_token not scrubbed on completed"
+        # Permission must stay 0600
+        mode = stat.S_IMODE((task_dir / "request.json").stat().st_mode)
+        assert mode == 0o600, f"mode = {oct(mode)}, want 0o600"
+    print("PASS: test_scrub_on_helper_completed")
+
+
+def test_scrub_on_helper_failed():
+    """Token scrub: worker marks failed via helper -> no task_token."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tasks_dir = Path(tmp)
+        task_id = "scrub-test-2"
+        task_dir = tasks_dir / task_id
+        task_dir.mkdir()
+        (task_dir / "status.json").write_text(json.dumps({"status": "running"}))
+        (task_dir / "request.json").write_text(json.dumps({
+            "task_token": "mat_test_token_456",
+        }))
+
+        rc = transition(tasks_dir, task_id, "failed", error="boom")
+        assert rc == 0
+
+        req = json.loads((task_dir / "request.json").read_text())
+        assert "task_token" not in req, "task_token not scrubbed on failed"
+    print("PASS: test_scrub_on_helper_failed")
+
+
+def test_scrub_idempotent_no_token():
+    """Scrub is no-op when request.json has no token."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tasks_dir = Path(tmp)
+        task_id = "scrub-test-3"
+        task_dir = tasks_dir / task_id
+        task_dir.mkdir()
+        (task_dir / "status.json").write_text(json.dumps({"status": "running"}))
+        (task_dir / "request.json").write_text(json.dumps({"prompt": "no token"}))
+
+        rc = transition(tasks_dir, task_id, "completed")
+        assert rc == 0
+        req = json.loads((task_dir / "request.json").read_text())
+        assert req["prompt"] == "no token"
+    print("PASS: test_scrub_idempotent_no_token")
+
+
 if __name__ == "__main__":
     test_b4_terminal_states_cannot_be_overwritten()
     test_b4_valid_transitions()
     test_b4_transition_table()
     test_gob3_protocol_version_rejected()
     test_n5_json_validation()
+    test_scrub_on_helper_completed()
+    test_scrub_on_helper_failed()
+    test_scrub_idempotent_no_token()
     print("\nAll regression tests passed!")
+
