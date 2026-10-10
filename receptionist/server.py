@@ -186,37 +186,17 @@ class Receptionist(BaseHTTPRequestHandler):
         return TASKS_DIR / task_id
 
     def _load_status(self, task_id: str):
+        # Pure read-only. No side effects.
+        # Orphan reclaim is handled by the background reclaim thread,
+        # which uses task_lock for atomicity. Don't reclaim here —
+        # this is called from _get_task/_get_events and must not write.
         p = self._task_dir(task_id) / "status.json"
         if not p.exists():
             return None
         try:
-            status = json.loads(p.read_text(encoding="utf-8"))
+            return json.loads(p.read_text(encoding="utf-8"))
         except ValueError:
             return None
-        # B5: Reclaim orphaned tasks. If a task has been "running" with no
-        # update for longer than its timeout (or 1 hour default), the worker
-        # is gone. Mark it failed so it doesn't sit in fake "running" forever.
-        # We don't auto-retry: without idempotency guarantees, re-running
-        # could cause duplicate side effects.
-        if status.get("status") == "running":
-            updated = status.get("updated_at", "")
-            timeout_s = status.get("timeout_s") or 3600
-            try:
-                # Parse ISO timestamp
-                from datetime import datetime, timezone
-                updated_dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))
-                now_dt = datetime.now(timezone.utc)
-                age_s = (now_dt - updated_dt).total_seconds()
-                if age_s > timeout_s:
-                    status["status"] = "failed"
-                    status["error"] = f"worker lost: no update for {int(age_s)}s (timeout {timeout_s}s)"
-                    status["finished_at"] = utcnow()
-                    status["updated_at"] = status["finished_at"]
-                    atomic_write(p, json.dumps(status, ensure_ascii=False, indent=2))
-                    self.log_message("reclaimed orphaned task %s after %ds", task_id, int(age_s))
-            except (ValueError, TypeError):
-                pass  # If we can't parse the timestamp, leave it alone
-        return status
 
     # -- routing ----------------------------------------------------------
     def do_GET(self):
@@ -488,22 +468,33 @@ def reclaim_orphaned_tasks():
                             created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
                             age_s = (now - created_dt).total_seconds()
                             if age_s > timeout_s:
-                                # Expired in queue — remove it so watcher doesn't pick it up
                                 task_id = qf.stem
-                                qf.unlink()
-                                # Record the expiry in tasks dir for visibility
-                                task_dir = TASKS_DIR / task_id
-                                task_dir.mkdir(parents=True, exist_ok=True)
-                                status = {
-                                    "task_id": task_id,
-                                    "status": "failed",
-                                    "error": f"expired in queue after {int(age_s)}s (timeout {timeout_s}s)",
-                                    "created_at": created,
-                                    "finished_at": utcnow(),
-                                    "updated_at": utcnow(),
-                                }
-                                atomic_write(task_dir / "status.json",
-                                           json.dumps(status, ensure_ascii=False, indent=2))
+                                # B4: Use the task lock. A worker might claim
+                                # (move the queue file) concurrently; the lock
+                                # serializes with cancel/worker operations.
+                                # Re-check the queue file still exists after locking.
+                                with task_lock(task_id):
+                                    if not qf.exists():
+                                        continue  # Already claimed, skip
+                                    qf.unlink()
+                                    # Record the expiry in tasks dir for visibility.
+                                    # Don't overwrite if a status already exists
+                                    # (e.g. worker claimed and wrote running).
+                                    task_dir = TASKS_DIR / task_id
+                                    task_dir.mkdir(parents=True, exist_ok=True)
+                                    sp = task_dir / "status.json"
+                                    if sp.exists():
+                                        continue  # Already has a status, leave it
+                                    status = {
+                                        "task_id": task_id,
+                                        "status": "failed",
+                                        "error": f"expired in queue after {int(age_s)}s (timeout {timeout_s}s)",
+                                        "created_at": created,
+                                        "finished_at": utcnow(),
+                                        "updated_at": utcnow(),
+                                    }
+                                    atomic_write(sp,
+                                               json.dumps(status, ensure_ascii=False, indent=2))
                         except (ValueError, TypeError):
                             pass
                     except (OSError, ValueError):

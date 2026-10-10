@@ -115,15 +115,17 @@ echo "    helper installed -> $HELPER_DIR/task_state.py"
 # (PR #9155 not yet merged upstream; official v0.2.21 does NOT include it).
 # Check the installed marker file, not version strings.
 # Also: 'set -e' + grep no-match = early exit. Use '|| true' guard.
+# N3: Marker binds repo+tag. Changing DAEMON_REPO with same tag must re-download.
 MARKER_FILE="$CONF_DIR/installed-daemon-release"
 NEED_DOWNLOAD=1
 if [ -x "$DAEMON_BIN" ] && [ -f "$MARKER_FILE" ]; then
-  INSTALLED_TAG=$(cat "$MARKER_FILE" 2>/dev/null || true)
-  if [ "$INSTALLED_TAG" = "$DAEMON_RELEASE_TAG" ]; then
-    echo "    existing binary matches $DAEMON_RELEASE_TAG, keeping it"
+  INSTALLED_ID=$(cat "$MARKER_FILE" 2>/dev/null || true)
+  WANT_ID="$DAEMON_REPO@$DAEMON_RELEASE_TAG"
+  if [ "$INSTALLED_ID" = "$WANT_ID" ]; then
+    echo "    existing binary matches $WANT_ID, keeping it"
     NEED_DOWNLOAD=0
   else
-    echo "    existing binary is $INSTALLED_TAG, want $DAEMON_RELEASE_TAG, upgrading"
+    echo "    existing binary is $INSTALLED_ID, want $WANT_ID, upgrading"
   fi
 fi
 if [ "$NEED_DOWNLOAD" = "1" ]; then
@@ -140,7 +142,7 @@ if [ "$NEED_DOWNLOAD" = "1" ]; then
     exit 1
   fi
   mv "$TMP_BIN" "$DAEMON_BIN"
-  echo "$DAEMON_RELEASE_TAG" > "$MARKER_FILE"
+  echo "$DAEMON_REPO@$DAEMON_RELEASE_TAG" > "$MARKER_FILE"
   chmod 600 "$MARKER_FILE"
 fi
 "$DAEMON_BIN" version | head -1
