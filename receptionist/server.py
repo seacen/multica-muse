@@ -472,19 +472,30 @@ def reclaim_orphaned_tasks():
                                 # B4: Use the task lock. A worker might claim
                                 # (move the queue file) concurrently; the lock
                                 # serializes with cancel/worker operations.
-                                # Re-check the queue file still exists after locking.
                                 with task_lock(task_id):
                                     if not qf.exists():
                                         continue  # Already claimed, skip
-                                    qf.unlink()
-                                    # Record the expiry in tasks dir for visibility.
-                                    # Don't overwrite if a status already exists
-                                    # (e.g. worker claimed and wrote running).
+                                    # Read current status to decide. Normal tasks
+                                    # have status.json with status="queued".
+                                    # Only expire if still queued; if running
+                                    # or terminal, the worker got to it first.
                                     task_dir = TASKS_DIR / task_id
                                     task_dir.mkdir(parents=True, exist_ok=True)
                                     sp = task_dir / "status.json"
+                                    current = "queued"
+                                    existing = None
                                     if sp.exists():
-                                        continue  # Already has a status, leave it
+                                        try:
+                                            existing = json.loads(sp.read_text(encoding="utf-8"))
+                                            current = existing.get("status", "queued")
+                                        except (ValueError, OSError):
+                                            pass
+                                    if current != "queued":
+                                        continue  # Worker claimed or already terminal
+                                    # Write the failed status FIRST, then remove
+                                    # from queue. If the write fails, the queue
+                                    # file remains and we retry next scan —
+                                    # no stranded state.
                                     status = {
                                         "task_id": task_id,
                                         "status": "failed",
@@ -493,8 +504,14 @@ def reclaim_orphaned_tasks():
                                         "finished_at": utcnow(),
                                         "updated_at": utcnow(),
                                     }
+                                    # Preserve any existing metadata
+                                    if existing:
+                                        for k in ("started_at", "result_preview"):
+                                            if k in existing:
+                                                status[k] = existing[k]
                                     atomic_write(sp,
                                                json.dumps(status, ensure_ascii=False, indent=2))
+                                    qf.unlink()
                         except (ValueError, TypeError):
                             pass
                     except (OSError, ValueError):
