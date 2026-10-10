@@ -23,6 +23,7 @@ the server refuses to start without it. Binds 127.0.0.1 by default.
 
 import hashlib
 import hmac
+import fcntl
 import json
 import threading
 import os
@@ -46,6 +47,27 @@ MAX_RESULT_BYTES = 204_800  # 200 KiB cap on result.md served via API
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+
+
+# B4: All task state writers (HTTP cancel, reclaim, worker helper) MUST use
+# this lock. fcntl is advisory — writers that skip it are not protected.
+# The worker helper task_state.py uses the same <task_dir>/.lock path.
+from contextlib import contextmanager
+
+@contextmanager
+def task_lock(task_id: str):
+    """Exclusive lock for a task's state files."""
+    if not task_id.replace("-", "").replace("_", "").isalnum():
+        raise ValueError(f"invalid task_id: {task_id}")
+    task_dir = TASKS_DIR / task_id
+    task_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = task_dir / ".lock"
+    with open(lock_path, "w") as lockf:
+        try:
+            fcntl.flock(lockf, fcntl.LOCK_EX)
+        except (OSError, AttributeError):
+            pass
+        yield
 
 def atomic_write(path: Path, data: str, mode: int = 0o600) -> None:
     # N2: Sensitive files (task_token in queue/request JSON) must be
@@ -402,19 +424,28 @@ class Receptionist(BaseHTTPRequestHandler):
     def _cancel(self, task_id: str):
         if not TASK_ID_RE.fullmatch(task_id):
             return json_response(self, 400, {"error": "invalid task id"})
-        status = self._load_status(task_id)
-        if status is None:
-            return json_response(self, 404, {"error": "unknown task"})
-        if status.get("status") in ("queued", "running"):
-            status["status"] = "cancelled"
-            status["finished_at"] = utcnow()
-            status["updated_at"] = status["finished_at"]
-            atomic_write(self._task_dir(task_id) / "status.json",
-                         json.dumps(status, ensure_ascii=False, indent=2))
-            qf = QUEUE_DIR / f"{task_id}.json"
-            if qf.exists():
-                qf.unlink()  # never picked up by the hook
-            self.log_message("cancelled task %s", task_id)
+        # B4: Use the task lock so cancel can't race with worker's
+        # mark-running or finish. Terminal states are protected.
+        try:
+            with task_lock(task_id):
+                status = self._load_status(task_id)
+                if status is None:
+                    return json_response(self, 404, {"error": "unknown task"})
+                # Only transition from non-terminal states. If already
+                # cancelled/completed/failed, leave it alone.
+                if status.get("status") in ("queued", "running"):
+                    status["status"] = "cancelled"
+                    status["finished_at"] = utcnow()
+                    status["updated_at"] = status["finished_at"]
+                    atomic_write(self._task_dir(task_id) / "status.json",
+                                 json.dumps(status, ensure_ascii=False, indent=2))
+                    qf = QUEUE_DIR / f"{task_id}.json"
+                    if qf.exists():
+                        qf.unlink()  # never picked up by the hook
+                    self.log_message("cancelled task %s", task_id)
+                # else: already terminal, no-op (don't overwrite)
+        except ValueError as e:
+            return json_response(self, 400, {"error": str(e)})
         return json_response(self, 200, {"ok": True})
 
 
@@ -478,43 +509,47 @@ def reclaim_orphaned_tasks():
                     except (OSError, ValueError):
                         pass
             # Check running tasks (claimed but worker lost)
+            # B4: Use task_lock so reclaim can't race with worker finish or HTTP cancel.
             if TASKS_DIR.exists():
                 for task_dir in TASKS_DIR.iterdir():
                     if not task_dir.is_dir():
                         continue
+                    task_id = task_dir.name
                     status_path = task_dir / "status.json"
                     if not status_path.exists():
                         continue
                     try:
-                        status = json.loads(status_path.read_text(encoding="utf-8"))
-                        if status.get("status") != "running":
-                            continue
-                        started = status.get("started_at") or status.get("updated_at", "")
-                        # timeout_s was saved in status at claim time; fall back to default
-                        timeout_s = status.get("timeout_s") or DEFAULT_TIMEOUT_S
-                        if timeout_s <= 0:
-                            timeout_s = DEFAULT_TIMEOUT_S
-                        try:
-                            started_dt = datetime.fromisoformat(started.replace("Z", "+00:00"))
-                            age_s = (now - started_dt).total_seconds()
-                            if age_s > timeout_s:
-                                status["status"] = "failed"
-                                status["error"] = (
-                                    f"worker lost: running for {int(age_s)}s "
-                                    f"exceeds timeout {timeout_s}s "
-                                    f"(from started_at; side effects may still be running)"
-                                )
-                                status["finished_at"] = utcnow()
-                                status["updated_at"] = status["finished_at"]
-                                atomic_write(status_path,
-                                           json.dumps(status, ensure_ascii=False, indent=2))
-                        except (ValueError, TypeError):
-                            pass
+                        # B4: Entire read-modify-write inside the lock.
+                        with task_lock(task_id):
+                            status = json.loads(status_path.read_text(encoding="utf-8"))
+                            if status.get("status") != "running":
+                                continue
+                            started = status.get("started_at") or status.get("updated_at", "")
+                            timeout_s = status.get("timeout_s") or DEFAULT_TIMEOUT_S
+                            if timeout_s <= 0:
+                                timeout_s = DEFAULT_TIMEOUT_S
+                            try:
+                                started_dt = datetime.fromisoformat(started.replace("Z", "+00:00"))
+                                age_s = (now - started_dt).total_seconds()
+                                if age_s > timeout_s:
+                                    status["status"] = "failed"
+                                    status["error"] = (
+                                        f"worker lost: running for {int(age_s)}s "
+                                        f"exceeds timeout {timeout_s}s "
+                                        f"(from started_at; side effects may still be running)"
+                                    )
+                                    status["finished_at"] = utcnow()
+                                    status["updated_at"] = status["finished_at"]
+                                    atomic_write(status_path,
+                                               json.dumps(status, ensure_ascii=False, indent=2))
+                            except (ValueError, TypeError):
+                                pass
                     except (OSError, ValueError):
                         pass
-        except Exception:
-            # Never let the reclaim thread die silently
-            pass
+        except Exception as e:
+            # B5: Never die silently, but make errors observable.
+            # Use print since logger may not be available in thread.
+            print(f"reclaim thread error: {e}", file=sys.stderr)
 
 
 def main() -> None:
@@ -545,6 +580,12 @@ def main() -> None:
         f"multica-muse-receptionist {VERSION} listening on {host}:{port} "
         f"(queue={QUEUE_DIR})\n"
     )
+    # B5: Start background orphan reclaim thread.
+    # Without this, queued/running tasks with lost workers never get cleaned up.
+    import threading
+    reclaim_thread = threading.Thread(target=reclaim_orphaned_tasks, daemon=True, name="reclaim")
+    reclaim_thread.start()
+    sys.stderr.write("reclaim thread started (interval=%ds)\n" % RECLAIM_INTERVAL_S)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

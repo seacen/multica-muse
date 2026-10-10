@@ -19,7 +19,7 @@ progress and the finish summary to the user's dedicated Multica side chat
 
 Use the atomic state helper — do NOT write status.json directly:
 ```bash
-python3 ~/workspace/multica-muse/receptionist/task_state.py \
+python3 ~/.local/share/multica-muse/task_state.py \
   ~/workspace/multica-muse/tasks <task_id> running
 ```
 If it exits non-zero with "invalid transition", the task was cancelled
@@ -105,7 +105,7 @@ per line:
   backend returns to the Multica agent).
 - Update status via the atomic helper (B4 — never write status.json directly):
 ```bash
-python3 ~/workspace/multica-muse/receptionist/task_state.py \
+python3 ~/.local/share/multica-muse/task_state.py \
   ~/workspace/multica-muse/tasks <task_id> completed
 # or: ... <task_id> failed --error "what went wrong"
 ```

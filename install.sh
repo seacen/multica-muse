@@ -101,25 +101,29 @@ if [ "$OS" != "linux" ]; then
 fi
 ASSET="multica-${OS}-${ARCH}"
 mkdir -p "$DAEMON_DIR"
+# Install the worker state helper to a known location.
+# The worker prompt calls it; it must survive reboots (not in /tmp).
+HELPER_DIR="$HOME/.local/share/multica-muse"
+mkdir -p "$HELPER_DIR"
+cp "$RECEP_DIR/receptionist/task_state.py" "$HELPER_DIR/"
+chmod +x "$HELPER_DIR/task_state.py"
+echo "    helper installed -> $HELPER_DIR/task_state.py"
 # N3: Don't trust an existing binary — verify it supports the muse backend.
 # Download to a temp file first, verify, then replace (avoids truncating
 # a working install on failed download).
-# N3: The muse backend landed in v0.2.21 (PR #9155). Help text grep is
-# not a capability check; compare versions instead.
-MUSE_MIN_VERSION="0.2.21"
+# N3: The muse backend is in the fork release $DAEMON_RELEASE_TAG
+# (PR #9155 not yet merged upstream; official v0.2.21 does NOT include it).
+# Check the installed marker file, not version strings.
+# Also: 'set -e' + grep no-match = early exit. Use '|| true' guard.
+MARKER_FILE="$CONF_DIR/installed-daemon-release"
 NEED_DOWNLOAD=1
-if [ -x "$DAEMON_BIN" ]; then
-  INSTALLED_VER=$("$DAEMON_BIN" version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-  if [ -n "$INSTALLED_VER" ]; then
-    HIGHER=$(printf "%s\n%s" "$MUSE_MIN_VERSION" "$INSTALLED_VER" | sort -V | tail -1)
-    if [ "$HIGHER" = "$INSTALLED_VER" ]; then
-      echo "    existing binary v$INSTALLED_VER >= v$MUSE_MIN_VERSION (muse support), keeping it"
-      NEED_DOWNLOAD=0
-    else
-      echo "    existing binary v$INSTALLED_VER < v$MUSE_MIN_VERSION (muse support), upgrading"
-    fi
+if [ -x "$DAEMON_BIN" ] && [ -f "$MARKER_FILE" ]; then
+  INSTALLED_TAG=$(cat "$MARKER_FILE" 2>/dev/null || true)
+  if [ "$INSTALLED_TAG" = "$DAEMON_RELEASE_TAG" ]; then
+    echo "    existing binary matches $DAEMON_RELEASE_TAG, keeping it"
+    NEED_DOWNLOAD=0
   else
-    echo "    could not parse existing binary version, re-downloading"
+    echo "    existing binary is $INSTALLED_TAG, want $DAEMON_RELEASE_TAG, upgrading"
   fi
 fi
 if [ "$NEED_DOWNLOAD" = "1" ]; then
@@ -136,6 +140,8 @@ if [ "$NEED_DOWNLOAD" = "1" ]; then
     exit 1
   fi
   mv "$TMP_BIN" "$DAEMON_BIN"
+  echo "$DAEMON_RELEASE_TAG" > "$MARKER_FILE"
+  chmod 600 "$MARKER_FILE"
 fi
 "$DAEMON_BIN" version | head -1
 
