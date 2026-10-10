@@ -20,7 +20,7 @@
 #
 # Env overrides:
 #   DAEMON_RELEASE_TAG  GitHub release tag to download the daemon from
-#                       (default: muse-backend-v2 on seacen/multica;
+#                       (default: muse-backend-v3 on seacen/multica;
 #                       after the upstream PR merges this flips to official)
 #   DAEMON_REPO         owner/repo for the release (default: seacen/multica)
 set -euo pipefail
