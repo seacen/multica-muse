@@ -24,6 +24,7 @@ the server refuses to start without it. Binds 127.0.0.1 by default.
 import hashlib
 import hmac
 import json
+import threading
 import os
 import re
 import sys
@@ -401,6 +402,105 @@ class Receptionist(BaseHTTPRequestHandler):
                 qf.unlink()  # never picked up by the hook
             self.log_message("cancelled task %s", task_id)
         return json_response(self, 200, {"ok": True})
+
+
+
+# B5: Timeout semantics (explicit contract):
+#
+# - timeout_s = max wall-clock seconds for the entire task, measured from
+#   `started_at` (when the worker marks it running). Not from creation,
+#   not from last update.
+# - Queued tasks: if not claimed (moved from queue/ to tasks/) within
+#   timeout_s of creation, they expire and are marked failed.
+# - Running tasks: if now - started_at > timeout_s, the worker is presumed
+#   lost. Marked failed. This does NOT mean the worker's side effects
+#   stopped — only that we no longer expect a result.
+# - timeout_s = 0 or null means "no deadline" (default 1 hour if unset).
+#
+# Reclaim runs in a background thread every 30s, not just on status read,
+# so orphaned tasks are cleaned up even if nobody polls.
+
+RECLAIM_INTERVAL_S = 30
+DEFAULT_TIMEOUT_S = 3600
+
+def reclaim_orphaned_tasks():
+    """Background thread: expire queued tasks and reclaim lost workers."""
+    import time
+    while True:
+        try:
+            time.sleep(RECLAIM_INTERVAL_S)
+            now = datetime.now(timezone.utc)
+            # Check queued tasks (not yet claimed)
+            if QUEUE_DIR.exists():
+                for qf in QUEUE_DIR.glob("*.json"):
+                    try:
+                        data = json.loads(qf.read_text(encoding="utf-8"))
+                        created = data.get("created_at", "")
+                        timeout_s = data.get("timeout_s") or DEFAULT_TIMEOUT_S
+                        if timeout_s <= 0:
+                            timeout_s = DEFAULT_TIMEOUT_S
+                        try:
+                            created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                            age_s = (now - created_dt).total_seconds()
+                            if age_s > timeout_s:
+                                # Expired in queue — remove it so watcher doesn't pick it up
+                                task_id = qf.stem
+                                qf.unlink()
+                                # Record the expiry in tasks dir for visibility
+                                task_dir = TASKS_DIR / task_id
+                                task_dir.mkdir(parents=True, exist_ok=True)
+                                status = {
+                                    "task_id": task_id,
+                                    "status": "failed",
+                                    "error": f"expired in queue after {int(age_s)}s (timeout {timeout_s}s)",
+                                    "created_at": created,
+                                    "finished_at": utcnow(),
+                                    "updated_at": utcnow(),
+                                }
+                                atomic_write(task_dir / "status.json",
+                                           json.dumps(status, ensure_ascii=False, indent=2))
+                        except (ValueError, TypeError):
+                            pass
+                    except (OSError, ValueError):
+                        pass
+            # Check running tasks (claimed but worker lost)
+            if TASKS_DIR.exists():
+                for task_dir in TASKS_DIR.iterdir():
+                    if not task_dir.is_dir():
+                        continue
+                    status_path = task_dir / "status.json"
+                    if not status_path.exists():
+                        continue
+                    try:
+                        status = json.loads(status_path.read_text(encoding="utf-8"))
+                        if status.get("status") != "running":
+                            continue
+                        started = status.get("started_at") or status.get("updated_at", "")
+                        # timeout_s was saved in status at claim time; fall back to default
+                        timeout_s = status.get("timeout_s") or DEFAULT_TIMEOUT_S
+                        if timeout_s <= 0:
+                            timeout_s = DEFAULT_TIMEOUT_S
+                        try:
+                            started_dt = datetime.fromisoformat(started.replace("Z", "+00:00"))
+                            age_s = (now - started_dt).total_seconds()
+                            if age_s > timeout_s:
+                                status["status"] = "failed"
+                                status["error"] = (
+                                    f"worker lost: running for {int(age_s)}s "
+                                    f"exceeds timeout {timeout_s}s "
+                                    f"(from started_at; side effects may still be running)"
+                                )
+                                status["finished_at"] = utcnow()
+                                status["updated_at"] = status["finished_at"]
+                                atomic_write(status_path,
+                                           json.dumps(status, ensure_ascii=False, indent=2))
+                        except (ValueError, TypeError):
+                            pass
+                    except (OSError, ValueError):
+                        pass
+        except Exception:
+            # Never let the reclaim thread die silently
+            pass
 
 
 def main() -> None:

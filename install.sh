@@ -104,13 +104,22 @@ mkdir -p "$DAEMON_DIR"
 # N3: Don't trust an existing binary — verify it supports the muse backend.
 # Download to a temp file first, verify, then replace (avoids truncating
 # a working install on failed download).
+# N3: The muse backend landed in v0.2.21 (PR #9155). Help text grep is
+# not a capability check; compare versions instead.
+MUSE_MIN_VERSION="0.2.21"
 NEED_DOWNLOAD=1
 if [ -x "$DAEMON_BIN" ]; then
-  if "$DAEMON_BIN" agent list --help 2>/dev/null | grep -q "muse"; then
-    echo "    existing binary supports muse, keeping it"
-    NEED_DOWNLOAD=0
+  INSTALLED_VER=$("$DAEMON_BIN" version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+  if [ -n "$INSTALLED_VER" ]; then
+    HIGHER=$(printf "%s\n%s" "$MUSE_MIN_VERSION" "$INSTALLED_VER" | sort -V | tail -1)
+    if [ "$HIGHER" = "$INSTALLED_VER" ]; then
+      echo "    existing binary v$INSTALLED_VER >= v$MUSE_MIN_VERSION (muse support), keeping it"
+      NEED_DOWNLOAD=0
+    else
+      echo "    existing binary v$INSTALLED_VER < v$MUSE_MIN_VERSION (muse support), upgrading"
+    fi
   else
-    echo "    existing binary lacks muse support, upgrading"
+    echo "    could not parse existing binary version, re-downloading"
   fi
 fi
 if [ "$NEED_DOWNLOAD" = "1" ]; then

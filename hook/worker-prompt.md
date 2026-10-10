@@ -17,15 +17,17 @@ progress and the finish summary to the user's dedicated Multica side chat
 
 ## 2. Mark running
 
-First, check if the task was cancelled while you were claiming:
-`cat ~/workspace/multica-muse/tasks/<task_id>/status.json | python3 -c "import json,sys;print(json.load(sys.stdin).get('status'))"`
+Use the atomic state helper — do NOT write status.json directly:
+```bash
+python3 ~/workspace/multica-muse/receptionist/task_state.py \
+  ~/workspace/multica-muse/tasks <task_id> running
+```
+If it exits non-zero with "invalid transition", the task was cancelled
+(or already finished). Stop immediately with `muse.nothing_to_do`.
 
-If it says `cancelled`: stop immediately with `muse.nothing_to_do`. Do NOT
-overwrite the cancelled status. The user cancelled this task.
-
-Otherwise, update `~/workspace/multica-muse/tasks/<task_id>/status.json`:
-set `status` to `"running"` and `updated_at` to the current UTC time
-(keep the other fields). Write it atomically (write temp file, then rename).
+B4: This helper uses file locking for atomic read-modify-write. Terminal
+states (cancelled/completed/failed) cannot be overwritten. Never bypass it
+by writing status.json yourself.
 
 ## 3. Reporting (dedicated side chat, no per-task chats)
 
@@ -101,9 +103,15 @@ per line:
 - Write `~/workspace/multica-muse/tasks/<task_id>/result.md`: a concise
   Markdown summary of what was done and the outcome (this is what the Go
   backend returns to the Multica agent).
-- Update `status.json`: `status` → `"completed"` (or `"failed"` with an
-  `error` string, or `"cancelled"`), plus `finished_at` (UTC ISO8601),
-  `result_preview` (first 300 chars of the result), `updated_at`.
+- Update status via the atomic helper (B4 — never write status.json directly):
+```bash
+python3 ~/workspace/multica-muse/receptionist/task_state.py \
+  ~/workspace/multica-muse/tasks <task_id> completed
+# or: ... <task_id> failed --error "what went wrong"
+```
+If it says "invalid transition", the task was cancelled while you worked.
+Do NOT overwrite — stop with `muse.nothing_to_do`. Your result.md is kept
+for the record, but the task stays cancelled.
 
 ## 6. Finish handoff（主代理据此建归档会话）
 
