@@ -117,13 +117,11 @@ def load_previous_session_context(session_id) -> str | None:
     try:
         if not result_path.is_file():
             return None
-        # N7: Check size before reading — don't OOM on huge result.md.
+        # B11: Use f.read(N) — read_text()[:N] loads the whole file first.
+        # Never read more than we need, regardless of file size.
         try:
-            if result_path.stat().st_size > MAX_PREV_CONTEXT_CHARS * 10:
-                # Read only what we need plus a bit
-                content = result_path.read_text(encoding="utf-8")[:MAX_PREV_CONTEXT_CHARS * 10].strip()
-            else:
-                content = result_path.read_text(encoding="utf-8").strip()
+            with open(result_path, "r", encoding="utf-8") as f:
+                content = f.read(MAX_PREV_CONTEXT_CHARS * 10).strip()
         except OSError:
             return None
     except OSError:
@@ -465,7 +463,7 @@ class Receptionist(BaseHTTPRequestHandler):
 # - Running tasks: if now - started_at > timeout_s, the worker is presumed
 #   lost. Marked failed. This does NOT mean the worker's side effects
 #   stopped — only that we no longer expect a result.
-# - timeout_s = 0 or null means "no deadline" (default 1 hour if unset).
+# - timeout_s = 0 or unset means 1 hour (the default). There is no "no deadline" mode.
 #
 # Reclaim runs in a background thread every 30s, not just on status read,
 # so orphaned tasks are cleaned up even if nobody polls.

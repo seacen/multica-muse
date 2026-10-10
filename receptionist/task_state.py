@@ -55,7 +55,7 @@ def transition(tasks_dir: Path, task_id: str, new_status: str, error: str = None
 
     # Use a lock file for mutual exclusion. The lock is held during
     # the entire read-modify-write cycle.
-    task_dir.mkdir(parents=True, exist_ok=True)
+    task_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     with open(lock_path, "w") as lockf:
         try:
             fcntl.flock(lockf, fcntl.LOCK_EX)

@@ -71,6 +71,18 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 # shellcheck disable=SC1090
 set -a; . "$ENV_FILE"; set +a
+# N11: Always restart on re-run so new code takes effect.
+# (Previously: if healthz passed, the old code kept running.)
+curl -fsS --max-time 3 http://127.0.0.1:8765/healthz >/dev/null 2>&1 && RECEP_WAS_RUNNING=1 || RECEP_WAS_RUNNING=0
+if [ "$RECEP_WAS_RUNNING" = "1" ]; then
+  echo "    receptionist running -> restarting with new code"
+  if systemctl --user is-active multica-muse-receptionist.service >/dev/null 2>&1; then
+    systemctl --user restart multica-muse-receptionist.service
+  else
+    pkill -f "receptionist/server.py" 2>/dev/null || true
+    sleep 1
+  fi
+fi
 if ! curl -fsS --max-time 3 http://127.0.0.1:8765/healthz >/dev/null 2>&1; then
   if systemctl --user daemon-reload 2>/dev/null; then
     mkdir -p "$HOME/.config/systemd/user"
