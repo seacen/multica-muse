@@ -55,7 +55,7 @@ fi
 
 # Record the wake (skipped on dry runs so they don't consume detections).
 if [ "$DRY" != "1" ]; then
-  mkdir -p "$STATE_DIR"
+  mkdir -p -m 0700 "$STATE_DIR"
   jq -n --arg id "$task_id" --argjson at "$now" \
     '{last_wake_task_id:$id, last_wake_at:$at}' > "$STATE_FILE.tmp" \
     && mv "$STATE_FILE.tmp" "$STATE_FILE"

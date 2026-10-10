@@ -390,25 +390,36 @@ class Receptionist(BaseHTTPRequestHandler):
             return json_response(self, 404, {"error": "unknown task"})
         events = []
         ep = self._task_dir(task_id) / "events.jsonl"
+        # B12: Stream the file instead of read_text() (OOM on huge logs).
+        # Cap returned events — the Go side truncates at 8MB, which would
+        # corrupt JSON and fail the poll. 1000 events is plenty for a
+        # transcript tail; older events are already in the Go transcript.
+        MAX_EVENTS = 1000
         if ep.exists():
             seq = 0
-            for line in ep.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                seq += 1
-                if seq <= since:
-                    continue
-                try:
-                    ev = json.loads(line)
-                except ValueError:
-                    continue
-                events.append({
-                    "seq": seq,
-                    "type": str(ev.get("type", "text")),
-                    "content": str(ev.get("content", "")),
-                    "tool": str(ev.get("tool", "")),
-                })
+            try:
+                with open(ep, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        seq += 1
+                        if seq <= since:
+                            continue
+                        if len(events) >= MAX_EVENTS:
+                            break
+                        try:
+                            ev = json.loads(line)
+                        except ValueError:
+                            continue
+                        events.append({
+                            "seq": seq,
+                            "type": str(ev.get("type", "text")),
+                            "content": str(ev.get("content", "")),
+                            "tool": str(ev.get("tool", "")),
+                        })
+            except OSError:
+                pass
         return json_response(self, 200, {"task_id": task_id, "events": events})
 
     def _cancel(self, task_id: str):

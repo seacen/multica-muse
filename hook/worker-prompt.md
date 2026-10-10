@@ -100,8 +100,8 @@ per line:
 - If `timeout_s` is set, stop new work when it elapses and report partial results.
 - At reasonable checkpoints, re-read `status.json`: if `status` is
   `"cancelled"`, stop promptly and finish as cancelled (step 6).
-- For long tasks, post at most 2–3 milestone updates to the side chat via
-  `chat.send_message` (instruction to publish a short progress line).
+- For long tasks, post at most 2–3 milestone updates by appending to events.jsonl
+  (the main agent forwards them to the side chat).
   Do not spam: start + milestones + finish is enough.
 
 ## 5. Finish: result + status

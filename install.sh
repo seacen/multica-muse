@@ -34,7 +34,7 @@ DAEMON_ENV="$CONF_DIR/daemon.env"
 PROFILE="muse"
 
 DAEMON_REPO="${DAEMON_REPO:-seacen/multica}"
-DAEMON_RELEASE_TAG="${DAEMON_RELEASE_TAG:-muse-backend-v2}"
+DAEMON_RELEASE_TAG="${DAEMON_RELEASE_TAG:-muse-backend-v3}"
 
 SERVER=""
 TOKEN="${MULTICA_TOKEN:-}"
