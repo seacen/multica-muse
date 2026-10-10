@@ -76,13 +76,28 @@ def main():
         status = st.get("status")
         if status in ("completed", "failed", "cancelled"):
             print(f"terminal status: {status}")
-            if st.get("result"):
+            result = st.get("result", "")
+            if result:
                 print("--- result ---")
-                print(st["result"][:2000])
+                print(result[:2000])
             if st.get("error"):
                 print("error:", st["error"])
-            sys.exit(0 if status == "completed" else 1)
+            # N4: Don't just check status — verify the worker actually
+            # produced the expected result. A "completed" with no result
+            # (or wrong result) is a failure, not a pass.
+            if status != "completed":
+                sys.exit(f"smoke test failed: terminal status was {status}")
+            if "smoke test ok" not in result:
+                sys.exit(f"smoke test failed: expected 'smoke test ok' in result, got: {result[:200]!r}")
+            print("smoke test PASSED: worker returned expected result")
+            sys.exit(0)
         time.sleep(POLL_S)
+    # N4: Try to cancel the orphaned task before giving up
+    try:
+        api("POST", f"/v1/tasks/{tid}/cancel", {})
+        print(f"cancelled orphaned smoke task {tid}", flush=True)
+    except SystemExit:
+        pass
     sys.exit(f"timed out after {DEADLINE_S}s waiting for {tid}")
 
 

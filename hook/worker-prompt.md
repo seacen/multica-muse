@@ -17,7 +17,13 @@ progress and the finish summary to the user's dedicated Multica side chat
 
 ## 2. Mark running
 
-Update `~/workspace/multica-muse/tasks/<task_id>/status.json`:
+First, check if the task was cancelled while you were claiming:
+`cat ~/workspace/multica-muse/tasks/<task_id>/status.json | python3 -c "import json,sys;print(json.load(sys.stdin).get('status'))"`
+
+If it says `cancelled`: stop immediately with `muse.nothing_to_do`. Do NOT
+overwrite the cancelled status. The user cancelled this task.
+
+Otherwise, update `~/workspace/multica-muse/tasks/<task_id>/status.json`:
 set `status` to `"running"` and `updated_at` to the current UTC time
 (keep the other fields). Write it atomically (write temp file, then rename).
 
@@ -46,7 +52,7 @@ daemon-context check, same as CLI backends (Hermes/Codex) get:
 
 ```bash
 export MULTICA_TOKEN=$(jq -r '.task_token' ~/workspace/multica-muse/tasks/<task_id>/request.json)
-~/workspace/multica-muse/bin/multica --profile muse issue get <issue-id> --output json
+~/.local/bin/multica --profile muse issue get <issue-id> --output json
 ```
 
 To post a comment (note: `workspace_slug` goes in the query string, not the body):

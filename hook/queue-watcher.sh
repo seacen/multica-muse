@@ -30,7 +30,11 @@ if [ "${#files[@]}" -eq 0 ]; then
   exit 0
 fi
 
-# Oldest queued task first (one wake per poll keeps workers serialized).
+# Oldest queued task first.
+# NOTE: This does NOT guarantee serialized execution. If the previous worker
+# is still running when the next poll fires, a second worker will start.
+# The Muse platform may impose its own concurrency limits, but this script
+# does not enforce single-flight. Don't rely on serialization for correctness.
 # files[@] is non-empty here, so ls never falls back to listing the cwd.
 oldest="$(ls -1tr "${files[@]}" | head -n 1)"
 task_id="$(basename "$oldest" .json)"

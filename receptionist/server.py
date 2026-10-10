@@ -143,9 +143,15 @@ class Receptionist(BaseHTTPRequestHandler):
             return None, "body missing or too large"
         raw = self.rfile.read(length)
         try:
-            return json.loads(raw.decode("utf-8")), None
+            body = json.loads(raw.decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             return None, "body is not valid JSON"
+        # N5: Must be a JSON object, not an array or primitive.
+        # Without this, body.get() raises AttributeError and the
+        # connection drops instead of returning 400.
+        if not isinstance(body, dict):
+            return None, "body must be a JSON object"
+        return body, None
 
     def _task_dir(self, task_id: str) -> Path:
         return TASKS_DIR / task_id
@@ -155,9 +161,33 @@ class Receptionist(BaseHTTPRequestHandler):
         if not p.exists():
             return None
         try:
-            return json.loads(p.read_text(encoding="utf-8"))
+            status = json.loads(p.read_text(encoding="utf-8"))
         except ValueError:
             return None
+        # B5: Reclaim orphaned tasks. If a task has been "running" with no
+        # update for longer than its timeout (or 1 hour default), the worker
+        # is gone. Mark it failed so it doesn't sit in fake "running" forever.
+        # We don't auto-retry: without idempotency guarantees, re-running
+        # could cause duplicate side effects.
+        if status.get("status") == "running":
+            updated = status.get("updated_at", "")
+            timeout_s = status.get("timeout_s") or 3600
+            try:
+                # Parse ISO timestamp
+                from datetime import datetime, timezone
+                updated_dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+                now_dt = datetime.now(timezone.utc)
+                age_s = (now_dt - updated_dt).total_seconds()
+                if age_s > timeout_s:
+                    status["status"] = "failed"
+                    status["error"] = f"worker lost: no update for {int(age_s)}s (timeout {timeout_s}s)"
+                    status["finished_at"] = utcnow()
+                    status["updated_at"] = status["finished_at"]
+                    atomic_write(p, json.dumps(status, ensure_ascii=False, indent=2))
+                    self.log_message("reclaimed orphaned task %s after %ds", task_id, int(age_s))
+            except (ValueError, TypeError):
+                pass  # If we can't parse the timestamp, leave it alone
+        return status
 
     # -- routing ----------------------------------------------------------
     def do_GET(self):
@@ -214,8 +244,14 @@ class Receptionist(BaseHTTPRequestHandler):
         timeout_s = body.get("timeout_s")
         if session_id is not None and not isinstance(session_id, str):
             return json_response(self, 400, {"error": "session_id must be a string"})
-        if timeout_s is not None and not isinstance(timeout_s, (int, float)):
-            return json_response(self, 400, {"error": "timeout_s must be a number"})
+        if timeout_s is not None:
+            # N5: bool is a subclass of int; reject it explicitly.
+            # Also reject negative, NaN, and infinite values.
+            import math
+            if isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float)):
+                return json_response(self, 400, {"error": "timeout_s must be a number"})
+            if not math.isfinite(timeout_s) or timeout_s < 0:
+                return json_response(self, 400, {"error": "timeout_s must be a non-negative finite number"})
         workdir = body.get("workdir")
         if workdir is not None and not isinstance(workdir, str):
             return json_response(self, 400, {"error": "workdir must be a string"})

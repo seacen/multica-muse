@@ -74,7 +74,11 @@ set -a; . "$ENV_FILE"; set +a
 if ! curl -fsS --max-time 3 http://127.0.0.1:8765/healthz >/dev/null 2>&1; then
   if systemctl --user daemon-reload 2>/dev/null; then
     mkdir -p "$HOME/.config/systemd/user"
-    cp "$RECEP_DIR/receptionist/multica-muse-receptionist.service" "$HOME/.config/systemd/user/"
+    # B1: Template the service file with the actual install location.
+    # The repo may be cloned anywhere; the unit must point at the real path.
+    sed "s|@RECEP_DIR@|$RECEP_DIR|g" \
+      "$RECEP_DIR/receptionist/multica-muse-receptionist.service" \
+      > "$HOME/.config/systemd/user/multica-muse-receptionist.service"
     systemctl --user daemon-reload
     systemctl --user enable --now multica-muse-receptionist.service
   else
@@ -97,12 +101,32 @@ if [ "$OS" != "linux" ]; then
 fi
 ASSET="multica-${OS}-${ARCH}"
 mkdir -p "$DAEMON_DIR"
-if [ ! -x "$DAEMON_BIN" ]; then
+# N3: Don't trust an existing binary — verify it supports the muse backend.
+# Download to a temp file first, verify, then replace (avoids truncating
+# a working install on failed download).
+NEED_DOWNLOAD=1
+if [ -x "$DAEMON_BIN" ]; then
+  if "$DAEMON_BIN" agent list --help 2>/dev/null | grep -q "muse"; then
+    echo "    existing binary supports muse, keeping it"
+    NEED_DOWNLOAD=0
+  else
+    echo "    existing binary lacks muse support, upgrading"
+  fi
+fi
+if [ "$NEED_DOWNLOAD" = "1" ]; then
   URL="https://github.com/${DAEMON_REPO}/releases/download/${DAEMON_RELEASE_TAG}/${ASSET}"
   echo "    downloading $URL"
-  curl -fsSL --max-time 120 -o "$DAEMON_BIN" "$URL" \
-    || { echo "ERROR: download failed" >&2; exit 1; }
-  chmod +x "$DAEMON_BIN"
+  TMP_BIN="$DAEMON_BIN.tmp.$$"
+  curl -fsSL --max-time 120 -o "$TMP_BIN" "$URL" \
+    || { echo "ERROR: download failed" >&2; rm -f "$TMP_BIN"; exit 1; }
+  chmod +x "$TMP_BIN"
+  # Verify the downloaded binary actually runs before replacing
+  if ! "$TMP_BIN" version >/dev/null 2>&1; then
+    echo "ERROR: downloaded binary failed to run" >&2
+    rm -f "$TMP_BIN"
+    exit 1
+  fi
+  mv "$TMP_BIN" "$DAEMON_BIN"
 fi
 "$DAEMON_BIN" version | head -1
 
@@ -125,7 +149,12 @@ set -a; . "$DAEMON_ENV"; set +a
 "$DAEMON_BIN" daemon stop --profile "$PROFILE" >/dev/null 2>&1 || true
 "$DAEMON_BIN" daemon start --profile "$PROFILE"
 sleep 3
-"$DAEMON_BIN" daemon status --profile "$PROFILE" 2>&1 | head -5 || true
+# N3: Verify the daemon actually started; don't declare success on failure.
+if ! "$DAEMON_BIN" daemon status --profile "$PROFILE" 2>&1 | head -5; then
+  echo "ERROR: daemon failed to start (see output above)" >&2
+  exit 1
+fi
+echo "    daemon running"
 
 echo ""
 echo "Done. The daemon registered a 'muse' runtime on $SERVER."
