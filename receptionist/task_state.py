@@ -108,13 +108,21 @@ def transition(tasks_dir: Path, task_id: str, new_status: str, error: str = None
                     req = json.loads(req_path.read_text(encoding="utf-8"))
                     if "task_token" in req:
                         del req["task_token"]
+                        # P3-2: R1 pattern — os.fdopen takes ownership of fd,
+                        # it closes on exception. Don't close again (EBADF
+                        # would mask the real error).
                         tmp_req = req_path.with_suffix(".json.tmp")
                         fd = os.open(tmp_req, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
                         try:
                             with os.fdopen(fd, "w", encoding="utf-8") as f:
                                 f.write(json.dumps(req, ensure_ascii=False, indent=2))
                         except Exception:
-                            os.close(fd)
+                            # fdopen already closed fd on failure; just
+                            # clean up the temp file.
+                            try:
+                                tmp_req.unlink(missing_ok=True)
+                            except OSError:
+                                pass
                             raise
                         tmp_req.replace(req_path)
             except (ValueError, OSError):

@@ -468,8 +468,9 @@ class Receptionist(BaseHTTPRequestHandler):
                     atomic_write(self._task_dir(task_id) / "status.json",
                                  json.dumps(status, ensure_ascii=False, indent=2))
                     qf = QUEUE_DIR / f"{task_id}.json"
-                    if qf.exists():
-                        qf.unlink()  # never picked up by the hook
+                    # P3-1: missing_ok=True — worker's lock-free mv may win
+                    # the race between exists() and unlink().
+                    qf.unlink(missing_ok=True)  # never picked up by the hook
                     # B14: Scrub AFTER unlink. The worker claims via mv without
                     # holding task_lock; scrub-before-unlink would miss a
                     # token mv'd into tasks/ between the two steps.
