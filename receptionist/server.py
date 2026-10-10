@@ -36,9 +36,11 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 VERSION = "1.4.0"
+# For isolated E2E testing, override with MUSE_QUEUE_DIR / MUSE_TASKS_DIR.
+# Production uses ~/workspace/multica-muse/{queue,tasks}.
 ROOT = Path.home() / "workspace" / "multica-muse"
-QUEUE_DIR = ROOT / "queue"
-TASKS_DIR = ROOT / "tasks"
+QUEUE_DIR = Path(os.environ.get("MUSE_QUEUE_DIR", ROOT / "queue"))
+TASKS_DIR = Path(os.environ.get("MUSE_TASKS_DIR", ROOT / "tasks"))
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 MAX_BODY_BYTES = 1_048_576  # 1 MiB cap on request bodies
 MAX_RESULT_BYTES = 204_800  # 200 KiB cap on result.md served via API
