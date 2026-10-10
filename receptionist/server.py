@@ -62,7 +62,9 @@ def task_lock(task_id: str):
     if not task_id.replace("-", "").replace("_", "").isalnum():
         raise ValueError(f"invalid task_id: {task_id}")
     task_dir = TASKS_DIR / task_id
-    task_dir.mkdir(parents=True, exist_ok=True)
+    # B10: mkdir with 0700 — don't leave world-readable task dirs.
+    # (Cancel on nonexistent task_id would otherwise create 0777-umask dirs.)
+    task_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock_path = task_dir / ".lock"
     with open(lock_path, "w") as lockf:
         try:
@@ -115,7 +117,15 @@ def load_previous_session_context(session_id) -> str | None:
     try:
         if not result_path.is_file():
             return None
-        content = result_path.read_text(encoding="utf-8").strip()
+        # N7: Check size before reading — don't OOM on huge result.md.
+        try:
+            if result_path.stat().st_size > MAX_PREV_CONTEXT_CHARS * 10:
+                # Read only what we need plus a bit
+                content = result_path.read_text(encoding="utf-8")[:MAX_PREV_CONTEXT_CHARS * 10].strip()
+            else:
+                content = result_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
     except OSError:
         return None
     if not content:
@@ -406,13 +416,26 @@ class Receptionist(BaseHTTPRequestHandler):
     def _cancel(self, task_id: str):
         if not TASK_ID_RE.fullmatch(task_id):
             return json_response(self, 400, {"error": "invalid task id"})
+        # B10: Check existence before taking lock — don't create empty
+        # task dirs for nonexistent IDs.
+        if self._load_status(task_id) is None:
+            # Also check queue (might be queued but not yet claimed)
+            if not (QUEUE_DIR / f"{task_id}.json").exists():
+                return json_response(self, 404, {"error": "unknown task"})
         # B4: Use the task lock so cancel can't race with worker's
         # mark-running or finish. Terminal states are protected.
+        # Re-check inside lock for TOCTOU.
         try:
             with task_lock(task_id):
                 status = self._load_status(task_id)
                 if status is None:
-                    return json_response(self, 404, {"error": "unknown task"})
+                    # Was queued, check again
+                    if not (QUEUE_DIR / f"{task_id}.json").exists():
+                        return json_response(self, 404, {"error": "unknown task"})
+                    # Queued but no status yet — create cancelled status
+                    status = {"task_id": task_id, "status": "queued"}
+                # Only transition from non-terminal states. If already
+                # cancelled/completed/failed, leave it alone.
                 # Only transition from non-terminal states. If already
                 # cancelled/completed/failed, leave it alone.
                 if status.get("status") in ("queued", "running"):

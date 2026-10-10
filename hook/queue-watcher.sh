@@ -21,7 +21,7 @@ STATE_FILE="$STATE_DIR/multica-muse-queue.json"
 REWAKE_AFTER_SECS=180
 DRY="${HATCH_HOOK_DRY_RUN:-0}"
 
-mkdir -p "$QUEUE"
+mkdir -p -m 0700 "$QUEUE"
 
 shopt -s nullglob
 files=("$QUEUE"/*.json)

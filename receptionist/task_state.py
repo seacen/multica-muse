@@ -74,12 +74,22 @@ def transition(tasks_dir: Path, task_id: str, new_status: str, error: str = None
         current = status.get("status", "unknown")
         allowed = TRANSITIONS.get(current, set())
 
+        if new_status not in TRANSITIONS:
+            print(f"unknown status: {new_status!r}", file=sys.stderr)
+            return 1
         if new_status not in allowed:
-            print(
-                f"invalid transition: {current} -> {new_status} "
-                f"(terminal states cannot be overwritten)",
-                file=sys.stderr,
-            )
+            if not allowed:
+                print(
+                    f"invalid transition: {current} -> {new_status} "
+                    f"({current} is terminal)",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"invalid transition: {current} -> {new_status} "
+                    f"(allowed: {sorted(allowed)})",
+                    file=sys.stderr,
+                )
             return 1
 
         status["status"] = new_status
