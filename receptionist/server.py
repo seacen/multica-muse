@@ -461,18 +461,19 @@ class Receptionist(BaseHTTPRequestHandler):
                     status = {"task_id": task_id, "status": "queued"}
                 # Only transition from non-terminal states. If already
                 # cancelled/completed/failed, leave it alone.
-                # Only transition from non-terminal states. If already
-                # cancelled/completed/failed, leave it alone.
                 if status.get("status") in ("queued", "running"):
                     status["status"] = "cancelled"
                     status["finished_at"] = utcnow()
                     status["updated_at"] = status["finished_at"]
                     atomic_write(self._task_dir(task_id) / "status.json",
                                  json.dumps(status, ensure_ascii=False, indent=2))
-                    scrub_task_token(self._task_dir(task_id))
                     qf = QUEUE_DIR / f"{task_id}.json"
                     if qf.exists():
                         qf.unlink()  # never picked up by the hook
+                    # B14: Scrub AFTER unlink. The worker claims via mv without
+                    # holding task_lock; scrub-before-unlink would miss a
+                    # token mv'd into tasks/ between the two steps.
+                    scrub_task_token(self._task_dir(task_id))
                     self.log_message("cancelled task %s", task_id)
                 # else: already terminal, no-op (don't overwrite)
         except ValueError as e:
