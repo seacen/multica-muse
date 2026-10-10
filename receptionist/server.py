@@ -46,9 +46,17 @@ def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def atomic_write(path: Path, data: str) -> None:
+def atomic_write(path: Path, data: str, mode: int = 0o600) -> None:
+    # N2: Sensitive files (task_token in queue/request JSON) must be
+    # owner-only. Don't rely on the caller's umask.
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(data, encoding="utf-8")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(data)
+    except:
+        os.close(fd)
+        raise
     os.replace(tmp, path)
 
 
@@ -235,7 +243,7 @@ class Receptionist(BaseHTTPRequestHandler):
         task_id = "mt-" + uuid.uuid4().hex[:16]
         now = utcnow()
         task_dir = self._task_dir(task_id)
-        task_dir.mkdir(parents=True, exist_ok=False)
+        task_dir.mkdir(parents=True, exist_ok=False, mode=0o700)
 
         # prompt_preview is computed from the original prompt so the
         # injected session context doesn't crowd it out.
@@ -291,8 +299,17 @@ class Receptionist(BaseHTTPRequestHandler):
                 out[key] = status[key]
         if status.get("status") in ("completed", "failed"):
             rp = self._task_dir(task_id) / "result.md"
-            if rp.exists() and rp.stat().st_size <= MAX_RESULT_BYTES:
-                out["result"] = rp.read_text(encoding="utf-8")
+            if rp.exists():
+                if rp.stat().st_size <= MAX_RESULT_BYTES:
+                    out["result"] = rp.read_text(encoding="utf-8")
+                else:
+                    # N1: Don't silently omit oversized results. Report it
+                    # explicitly so the caller knows the result exists but
+                    # wasn't returned — not the same as "no result".
+                    out["error"] = f"result too large ({rp.stat().st_size} bytes > {MAX_RESULT_BYTES} byte limit); read result.md directly from the task directory"
+            # If result.md doesn't exist, that's also not a silent empty —
+            # the caller sees no "result" key and no error, which the Go
+            # backend treats as "no final result" (falls back to transcript).
         return json_response(self, 200, out)
 
     def _get_events(self, task_id: str, since: int):
@@ -352,8 +369,16 @@ def main() -> None:
         sys.exit(1)
     host = os.environ.get("MUSE_RECEPTIONIST_HOST", "127.0.0.1")
     port = int(os.environ.get("MUSE_RECEPTIONIST_PORT", "8765"))
-    QUEUE_DIR.mkdir(parents=True, exist_ok=True)
-    TASKS_DIR.mkdir(parents=True, exist_ok=True)
+    # N2: Task directories contain sensitive tokens; owner-only.
+    QUEUE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    TASKS_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # Ensure existing dirs are also locked down (in case they were
+    # created before this fix).
+    try:
+        os.chmod(QUEUE_DIR, 0o700)
+        os.chmod(TASKS_DIR, 0o700)
+    except OSError:
+        pass
 
     server = ThreadingHTTPServer((host, port), Receptionist)
     server.expected_token = token
