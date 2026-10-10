@@ -51,12 +51,16 @@ export MULTICA_TOKEN=$(jq -r '.task_token' ~/workspace/multica-muse/tasks/<task_
 
 To post a comment (note: `workspace_slug` goes in the query string, not the body):
 ```bash
-export MULTICA_TOKEN=$(jq -r '.task_token' ~/workspace/multica-muse/tasks/<task_id>/request.json)
-curl -s -X POST "https://multica.seacen.dev/api/issues/<issue-id>/comments?workspace_slug=seacen" \
+# Read server_url, workspace_id, and task_token from YOUR task's request.json.
+# Do NOT hardcode a server URL or workspace.
+REQ=~/workspace/multica-muse/tasks/<task_id>/request.json
+export MULTICA_TOKEN=$(jq -r '.task_token' $REQ)
+SERVER_URL=$(jq -r '.server_url' $REQ)
+WORKSPACE_ID=$(jq -r '.workspace_id' $REQ)
+curl -s -X POST "$SERVER_URL/api/issues/<issue-id>/comments?workspace_slug=$WORKSPACE_ID" \
   -H "Authorization: Bearer $MULTICA_TOKEN" -H "Content-Type: application/json" \
   -d '{"content":"你的评论内容"}'
 ```
-(Get the server URL from `~/workspace/multica-muse/bin/multica --profile muse config get server_url`, or ask the user.)
 
 When your task says "reply with a comment" or "post the result to the
 issue", do it via the CLI or curl above — do not leave the write-back
