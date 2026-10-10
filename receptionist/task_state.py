@@ -138,10 +138,9 @@ def transition(tasks_dir: Path, task_id: str, new_status: str, error: str = None
         if new_status == "running" and "started_at" not in status:
             status["started_at"] = status["updated_at"]
 
-        # Atomic write: temp file + rename
-        tmp = status_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(status_path)
+        # Atomic write with 0600 (N22: consistent with request.json).
+        atomic_write_0600(status_path,
+                          json.dumps(status, ensure_ascii=False, indent=2))
 
     return 0
 
