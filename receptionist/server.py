@@ -35,7 +35,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 # For isolated E2E testing, override with MUSE_QUEUE_DIR / MUSE_TASKS_DIR.
 # Production uses ~/workspace/multica-muse/{queue,tasks}.
 ROOT = Path.home() / "workspace" / "multica-muse"
@@ -72,6 +72,22 @@ def task_lock(task_id: str):
         except (OSError, AttributeError):
             pass
         yield
+
+def scrub_task_token(task_dir: Path) -> None:
+    """Remove task_token from request.json (best-effort).
+    Called on every terminal transition so no credential-shaped value
+    stays on disk, regardless of which path marked the task terminal."""
+    req_path = task_dir / "request.json"
+    try:
+        if req_path.is_file():
+            req = json.loads(req_path.read_text(encoding="utf-8"))
+            if "task_token" in req:
+                del req["task_token"]
+                atomic_write(req_path,
+                             json.dumps(req, ensure_ascii=False, indent=2))
+    except (ValueError, OSError):
+        pass
+
 
 def atomic_write(path: Path, data: str, mode: int = 0o600) -> None:
     # N2: Sensitive files (task_token in queue/request JSON) must be
@@ -453,6 +469,7 @@ class Receptionist(BaseHTTPRequestHandler):
                     status["updated_at"] = status["finished_at"]
                     atomic_write(self._task_dir(task_id) / "status.json",
                                  json.dumps(status, ensure_ascii=False, indent=2))
+                    scrub_task_token(self._task_dir(task_id))
                     qf = QUEUE_DIR / f"{task_id}.json"
                     if qf.exists():
                         qf.unlink()  # never picked up by the hook
@@ -584,6 +601,7 @@ def reclaim_orphaned_tasks():
                                     status["updated_at"] = status["finished_at"]
                                     atomic_write(status_path,
                                                json.dumps(status, ensure_ascii=False, indent=2))
+                                    scrub_task_token(task_dir)
                             except (ValueError, TypeError):
                                 pass
                     except (OSError, ValueError):

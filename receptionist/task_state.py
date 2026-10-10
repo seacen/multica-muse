@@ -24,6 +24,7 @@ Exit codes:
 """
 
 import fcntl
+import os
 import json
 import sys
 from datetime import datetime, timezone
@@ -99,6 +100,8 @@ def transition(tasks_dir: Path, task_id: str, new_status: str, error: str = None
             # Scrub the task token from request.json on terminal states.
             # The server invalidates the token, but there's no reason to
             # keep a credential-shaped value on disk.
+            # Use 0600 via atomic write (consistent with server.py).
+            # os.open with O_CREAT|O_EXCL ensures the mode applies.
             req_path = task_dir / "request.json"
             try:
                 if req_path.is_file():
@@ -106,10 +109,13 @@ def transition(tasks_dir: Path, task_id: str, new_status: str, error: str = None
                     if "task_token" in req:
                         del req["task_token"]
                         tmp_req = req_path.with_suffix(".json.tmp")
-                        tmp_req.write_text(
-                            json.dumps(req, ensure_ascii=False, indent=2),
-                            encoding="utf-8",
-                        )
+                        fd = os.open(tmp_req, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                        try:
+                            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                                f.write(json.dumps(req, ensure_ascii=False, indent=2))
+                        except Exception:
+                            os.close(fd)
+                            raise
                         tmp_req.replace(req_path)
             except (ValueError, OSError):
                 pass  # Best-effort; don't fail the transition.
