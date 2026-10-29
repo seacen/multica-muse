@@ -26,7 +26,7 @@ Multica 智能体可以把任务交给它。
 Multica server
     │  派发任务
     ▼
-multica daemon（muse backend，Go）
+multica daemon（museapp backend，Go）
     │  POST /v1/execute
     ▼
 receptionist（Python，跑在你的 Muse 云电脑上，127.0.0.1:8765）
@@ -93,13 +93,13 @@ Multica 官方托管版用 `--saas` 代替 `--server`。先去 Multica 网页建
 
 健康检查：`curl http://127.0.0.1:8765/healthz` 返回 `{"ok":true}`。
 
-daemon 从 `~/.config/multica-muse/daemon.env` 读 `MUSE_ENDPOINT` 和 `MUSE_TOKEN`。安装脚本会帮你写好这个文件。
+daemon 从 `~/.config/multica-muse/daemon.env` 读 `MULTICA_MUSEAPP_ENDPOINT` 和 `MULTICA_MUSEAPP_TOKEN`。安装脚本会帮你写好这个文件。它也会写一份 `MUSE_ENDPOINT` 和 `MUSE_TOKEN`：这是 backend 改名为 `museapp` 之前的变量名，固定下载的 `muse-backend-v3` 版本还在读它们。
 
 ## 排障
 
 - **hook 一直不触发。**hook 要 `hooks.enable`，而且 dry run 必须两个分支都过（空队列 → silent，测试任务 → wake）。让你的 Muse 查状态。
 - **登录报 "unknown flag"。**新版 daemon 用 `multica login --token`，不是 `multica auth login --token`。
-- **daemon 连不上 receptionist。**查 `~/.config/multica-muse/daemon.env` 里的 `MUSE_ENDPOINT`。host 和端口要对上。
+- **daemon 连不上 receptionist。**查 `~/.config/multica-muse/daemon.env` 里的 `MULTICA_MUSEAPP_ENDPOINT`。host 和端口要对上。
 - **Muse 云电脑没有 systemd。**用 `./start.sh` 后台启动 receptionist，不用 service 文件。
 
 ## 贡献

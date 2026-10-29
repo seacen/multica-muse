@@ -26,7 +26,7 @@ over HTTP, so your Multica agents can delegate tasks to it.
 Multica server
     │  dispatches a task
     ▼
-multica daemon  (muse backend, Go)
+multica daemon  (museapp backend, Go)
     │  POST /v1/execute
     ▼
 receptionist  (Python, your Muse cloud computer, 127.0.0.1:8765)
@@ -94,13 +94,13 @@ In Multica, create an agent on the `muse` runtime. Send it a task. The result co
 
 Health check: `curl http://127.0.0.1:8765/healthz` returns `{"ok":true}`.
 
-The daemon reads `MUSE_ENDPOINT` and `MUSE_TOKEN` from `~/.config/multica-muse/daemon.env`. The installer writes this file for you.
+The daemon reads `MULTICA_MUSEAPP_ENDPOINT` and `MULTICA_MUSEAPP_TOKEN` from `~/.config/multica-muse/daemon.env`. The installer writes this file for you. It also writes `MUSE_ENDPOINT` and `MUSE_TOKEN`, the names the daemon used before the backend was renamed `museapp`, so the pinned `muse-backend-v3` release keeps working.
 
 ## Troubleshooting
 
 - **The hook never fires.** The hook needs `hooks.enable`, and only after the dry run passes both branches (empty queue → silent, test task → wake). Ask your Muse to check its status.
 - **Login fails with "unknown flag".** Newer daemon builds use `multica login --token`, not `multica auth login --token`.
-- **The daemon cannot reach the receptionist.** Check `MUSE_ENDPOINT` in `~/.config/multica-muse/daemon.env`. Host and port must match the receptionist.
+- **The daemon cannot reach the receptionist.** Check `MULTICA_MUSEAPP_ENDPOINT` in `~/.config/multica-muse/daemon.env`. Host and port must match the receptionist.
 - **No systemd on your Muse cloud computer.** Start the receptionist in the background with `./start.sh` instead of the service file.
 
 ## Contributing

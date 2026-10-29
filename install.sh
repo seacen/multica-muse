@@ -11,9 +11,9 @@
 #
 # What it does:
 #   1. installs the Muse receptionist (token, service, health check)
-#   2. downloads the multica daemon binary (with the muse backend)
+#   2. downloads the multica daemon binary (with the museapp backend)
 #   3. logs the daemon in (dedicated "muse" profile, doesn't touch yours)
-#   4. starts the daemon with MUSE_ENDPOINT/MUSE_TOKEN wired up
+#   4. starts the daemon with MULTICA_MUSEAPP_ENDPOINT/MULTICA_MUSEAPP_TOKEN wired up
 #
 # After this, ask your Muse to register the queue-watcher hook
 # (hooks.add -> dry_run -> enable). Until then, tasks queue but don't execute.
@@ -168,8 +168,12 @@ fi
 echo "    logged in to $SERVER"
 
 echo "==> 4/5 wire daemon <-> receptionist"
-MUSE_TOKEN="$(grep -o 'MUSE_RECEPTIONIST_TOKEN=.*' "$ENV_FILE" | cut -d= -f2)"
-printf 'MUSE_ENDPOINT=http://127.0.0.1:8765\nMUSE_TOKEN=%s\n' "$MUSE_TOKEN" > "$DAEMON_ENV"
+RECEP_TOKEN="$(grep -o 'MUSE_RECEPTIONIST_TOKEN=.*' "$ENV_FILE" | cut -d= -f2)"
+# MULTICA_MUSEAPP_* is what the daemon reads from multica#9155 on, where the
+# backend was renamed museapp (upstream's own `muse` is Meta Muse Code).
+# MUSE_* is what the pinned fork release still reads. Both are written so
+# either binary finds its endpoint; drop MUSE_* once the default tag moves.
+printf 'MULTICA_MUSEAPP_ENDPOINT=http://127.0.0.1:8765\nMULTICA_MUSEAPP_TOKEN=%s\nMUSE_ENDPOINT=http://127.0.0.1:8765\nMUSE_TOKEN=%s\n' "$RECEP_TOKEN" "$RECEP_TOKEN" > "$DAEMON_ENV"
 chmod 600 "$DAEMON_ENV"
 echo "    env written -> $DAEMON_ENV"
 

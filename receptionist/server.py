@@ -98,7 +98,7 @@ def atomic_write(path: Path, data: str, mode: int = 0o600) -> None:
     os.replace(tmp, path)
 
 
-# Prefix the Go muse backend puts on the session id it reports
+# Prefix the Go museapp backend puts on the session id it reports
 # (Result.SessionID = "muse:" + task_id). When the daemon resumes a
 # session, it passes that value back as POST /v1/execute's session_id.
 MUSE_SESSION_PREFIX = "muse:"
@@ -297,7 +297,7 @@ class Receptionist(BaseHTTPRequestHandler):
         if task_token is not None and not isinstance(task_token, str):
             return json_response(self, 400, {"error": "task_token must be a string"})
         # task_token is the task-scoped Multica API credential (mat_...)
-        # forwarded by the Go muse backend from daemon ExecOptions.TaskToken.
+        # forwarded by the Go museapp backend from daemon ExecOptions.TaskToken.
         # It is handed to the worker (via request.json) so the worker can
         # run `multica` CLI with MULTICA_TOKEN=<task_token>, passing the
         # CLI's daemon-context check — the same identity CLI backends get.

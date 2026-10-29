@@ -34,7 +34,7 @@ This does 5 things:
 - Generates the receptionist bearer token and starts the receptionist on `127.0.0.1:8765`.
 - Downloads the muse-backend daemon binary.
 - Logs in under a dedicated `muse` profile (does not touch existing profiles).
-- Writes `MUSE_ENDPOINT`/`MUSE_TOKEN` to `~/.config/multica-muse/daemon.env`.
+- Writes `MULTICA_MUSEAPP_ENDPOINT`/`MULTICA_MUSEAPP_TOKEN` to `~/.config/multica-muse/daemon.env` (plus the older `MUSE_*` names for the pinned release).
 - Starts the daemon.
 
 If login fails, see `references/troubleshooting.md` — newer daemon builds moved `--token` from `auth login` to `multica login`.
@@ -101,6 +101,6 @@ Tell the user: in the Multica web UI, create an agent on the `muse` runtime and 
 3. Hook workers have no `chat.*` capability — do not promise live per-task side chats. All completion notifications go to the dedicated side chat from step 4.
 4. Keep the user's token out of command lines where possible; never include
    it in any file you write or any tool output you show.
-5. The daemon needs `MUSE_ENDPOINT`/`MUSE_TOKEN` in its process environment:
+5. The daemon needs `MULTICA_MUSEAPP_ENDPOINT`/`MULTICA_MUSEAPP_TOKEN` (or, on the pinned `muse-backend-v3` release, `MUSE_ENDPOINT`/`MUSE_TOKEN`) in its process environment:
    `set -a; . ~/.config/multica-muse/daemon.env; set +a` before
    `multica daemon start --profile muse`.
