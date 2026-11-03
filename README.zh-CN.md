@@ -73,11 +73,11 @@ Multica 官方托管版用 `--saas` 代替 `--server`。先去 Multica 网页建
 
 **3. 从 Multica 派任务。**
 
-在 Multica 里建一个 `muse` runtime 的智能体。给它派任务。结果回到你的 Multica 聊天里。
+在 Multica 里建一个 `museapp` runtime 的智能体。给它派任务。结果回到你的 Multica 聊天里。
 
 ## 任务流转
 
-1. 任务到达 `muse` runtime 上的 Multica 智能体。
+1. 任务到达 `museapp` runtime 上的 Multica 智能体。
 2. daemon 把 prompt POST 给你的 receptionist。
 3. receptionist 入队。watcher 几秒内唤醒一个 Muse worker。
 4. worker 用你的完整 Muse 能力执行任务。
@@ -93,7 +93,11 @@ Multica 官方托管版用 `--saas` 代替 `--server`。先去 Multica 网页建
 
 健康检查：`curl http://127.0.0.1:8765/healthz` 返回 `{"ok":true}`。
 
-daemon 从 `~/.config/multica-muse/daemon.env` 读 `MULTICA_MUSEAPP_ENDPOINT` 和 `MULTICA_MUSEAPP_TOKEN`。安装脚本会帮你写好这个文件。它也会写一份 `MUSE_ENDPOINT` 和 `MUSE_TOKEN`：这是 backend 改名为 `museapp` 之前的变量名，固定下载的 `muse-backend-v3` 版本还在读它们。
+daemon 从 `~/.config/multica-muse/daemon.env` 读 `MULTICA_MUSEAPP_ENDPOINT` 和 `MULTICA_MUSEAPP_TOKEN`。安装脚本会帮你写好这个文件。
+
+## 升级
+
+已经装好、要换到更新的 daemon 版本时，照 [`skills/multica-muse-setup/references/upgrade.md`](skills/multica-muse-setup/references/upgrade.md) 做，或者让你的 Muse 来做。不要为此重跑 `install.sh`：它每次都要一个新的 Multica token。
 
 ## 排障
 
@@ -106,7 +110,7 @@ daemon 从 `~/.config/multica-muse/daemon.env` 读 `MULTICA_MUSEAPP_ENDPOINT` �
 
 欢迎 PR。改动大先开 issue。
 
-这个仓库是安装脚本和本机侧。Multica server 侧配套的 `muse` backend 在 [Multica 仓库](https://github.com/multica-ai/multica/pull/9155)。
+这个仓库是安装脚本和本机侧。Multica daemon 侧配套的 `museapp` backend 在 [Multica 仓库](https://github.com/multica-ai/multica/pull/9155)。
 
 ## 许可证
 

@@ -1,6 +1,6 @@
 ---
 name: "multica-muse-setup"
-description: "Set up the Multica→Muse integration and its ongoing operation: install the receptionist, log in a muse-backend daemon, register the queue-watcher hook, verify end-to-end, and create the dedicated side chat that receives all task notifications. Use when the user wants their Multica agents to delegate work to their Muse app."
+description: "Set up the Multica→Muse integration and its ongoing operation: install the receptionist, log in a Multica daemon with the museapp backend, register the queue-watcher hook, verify end-to-end, and create the dedicated side chat that receives all task notifications. Also upgrades an existing install to a newer daemon release. Use when the user wants their Multica agents to delegate work to their Muse app, or asks to upgrade or update the Multica daemon on this machine."
 compatibility: "Requires Muse (Meta's personal AI agent) on Linux with hooks and chat APIs. Not for generic Claude Code."
 ---
 
@@ -8,7 +8,7 @@ compatibility: "Requires Muse (Meta's personal AI agent) on Linux with hooks and
 
 ## Purpose
 Set up the full chain so a user's Multica agents can delegate tasks to their
-Muse app: Python receptionist → muse-backend daemon → queue-watcher hook →
+Muse app: Python receptionist → daemon (museapp backend) → queue-watcher hook →
 verified end-to-end.
 
 ## Prerequisites
@@ -32,10 +32,12 @@ MULTICA_TOKEN='<user-pasted-token>' ./install.sh --server <url>   # or --saas
 
 This does 5 things:
 - Generates the receptionist bearer token and starts the receptionist on `127.0.0.1:8765`.
-- Downloads the muse-backend daemon binary.
+- Downloads the Multica daemon binary with the museapp backend.
 - Logs in under a dedicated `muse` profile (does not touch existing profiles).
-- Writes `MULTICA_MUSEAPP_ENDPOINT`/`MULTICA_MUSEAPP_TOKEN` to `~/.config/multica-muse/daemon.env` (plus the older `MUSE_*` names for the pinned release).
+- Writes `MULTICA_MUSEAPP_ENDPOINT`/`MULTICA_MUSEAPP_TOKEN` to `~/.config/multica-muse/daemon.env`.
 - Starts the daemon.
+
+Already installed and only upgrading to a newer release? Skip this workflow and follow `references/upgrade.md`: an upgrade needs no token and must not run inside a Multica task.
 
 If login fails, see `references/troubleshooting.md` — newer daemon builds moved `--token` from `auth login` to `multica login`.
 
@@ -75,13 +77,13 @@ All Multica work and notifications live in one side chat — never the main chat
 - Tell the user: this chat is the primary interface. They talk to the agent here; the agent syncs to Multica (see `references/chat-sync.md`).
 
 ### 5. Hand off to the user
-Tell the user: in the Multica web UI, create an agent on the `muse` runtime and dispatch a task. The result will surface in the dedicated side chat.
+Tell the user: in the Multica web UI, create an agent on the `museapp` runtime and dispatch a task. The result will surface in the dedicated side chat.
 
 ## Output Contract
 - `curl -fsS http://127.0.0.1:8765/healthz` → `{"ok":true,...}`.
-- `multica daemon status --profile muse` shows running, with the `muse`
+- `multica daemon status --profile muse` shows running, with the `museapp`
   runtime registered (check the daemon log for
-  `registered runtime ... provider=muse`).
+  `registered runtime ... provider=museapp`).
 - Hook `multica-muse-queue` is enabled at a 5s interval.
 - `scripts/smoke_test.py` exits 0 with a `completed` task and a retrieved result.
 
@@ -101,6 +103,6 @@ Tell the user: in the Multica web UI, create an agent on the `muse` runtime and 
 3. Hook workers have no `chat.*` capability — do not promise live per-task side chats. All completion notifications go to the dedicated side chat from step 4.
 4. Keep the user's token out of command lines where possible; never include
    it in any file you write or any tool output you show.
-5. The daemon needs `MULTICA_MUSEAPP_ENDPOINT`/`MULTICA_MUSEAPP_TOKEN` (or, on the pinned `muse-backend-v3` release, `MUSE_ENDPOINT`/`MUSE_TOKEN`) in its process environment:
+5. The daemon needs `MULTICA_MUSEAPP_ENDPOINT`/`MULTICA_MUSEAPP_TOKEN` in its process environment:
    `set -a; . ~/.config/multica-muse/daemon.env; set +a` before
    `multica daemon start --profile muse`.

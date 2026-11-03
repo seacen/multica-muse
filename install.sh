@@ -20,7 +20,7 @@
 #
 # Env overrides:
 #   DAEMON_RELEASE_TAG  GitHub release tag to download the daemon from
-#                       (default: muse-backend-v3 on seacen/multica;
+#                       (default: muse-backend-v4 on seacen/multica;
 #                       after the upstream PR merges this flips to official)
 #   DAEMON_REPO         owner/repo for the release (default: seacen/multica)
 set -euo pipefail
@@ -34,7 +34,7 @@ DAEMON_ENV="$CONF_DIR/daemon.env"
 PROFILE="muse"
 
 DAEMON_REPO="${DAEMON_REPO:-seacen/multica}"
-DAEMON_RELEASE_TAG="${DAEMON_RELEASE_TAG:-muse-backend-v3}"
+DAEMON_RELEASE_TAG="${DAEMON_RELEASE_TAG:-muse-backend-v4}"
 
 SERVER=""
 TOKEN="${MULTICA_TOKEN:-}"
@@ -120,11 +120,11 @@ mkdir -p "$HELPER_DIR"
 cp "$RECEP_DIR/receptionist/task_state.py" "$HELPER_DIR/"
 chmod +x "$HELPER_DIR/task_state.py"
 echo "    helper installed -> $HELPER_DIR/task_state.py"
-# N3: Don't trust an existing binary — verify it supports the muse backend.
+# N3: Don't trust an existing binary — verify it supports the museapp backend.
 # Download to a temp file first, verify, then replace (avoids truncating
 # a working install on failed download).
-# N3: The muse backend is in the fork release $DAEMON_RELEASE_TAG
-# (PR #9155 not yet merged upstream; official v0.2.21 does NOT include it).
+# N3: The museapp backend is in the fork release $DAEMON_RELEASE_TAG
+# (PR #9155 not yet merged upstream; official releases do NOT include it).
 # Check the installed marker file, not version strings.
 # Also: 'set -e' + grep no-match = early exit. Use '|| true' guard.
 # N3: Marker binds repo+tag. Changing DAEMON_REPO with same tag must re-download.
@@ -169,11 +169,9 @@ echo "    logged in to $SERVER"
 
 echo "==> 4/5 wire daemon <-> receptionist"
 RECEP_TOKEN="$(grep -o 'MUSE_RECEPTIONIST_TOKEN=.*' "$ENV_FILE" | cut -d= -f2)"
-# MULTICA_MUSEAPP_* is what the daemon reads from multica#9155 on, where the
-# backend was renamed museapp (upstream's own `muse` is Meta Muse Code).
-# MUSE_* is what the pinned fork release still reads. Both are written so
-# either binary finds its endpoint; drop MUSE_* once the default tag moves.
-printf 'MULTICA_MUSEAPP_ENDPOINT=http://127.0.0.1:8765\nMULTICA_MUSEAPP_TOKEN=%s\nMUSE_ENDPOINT=http://127.0.0.1:8765\nMUSE_TOKEN=%s\n' "$RECEP_TOKEN" "$RECEP_TOKEN" > "$DAEMON_ENV"
+# The backend is named museapp (upstream's own `muse` is Meta Muse Code), and
+# the daemon reads MULTICA_MUSEAPP_*.
+printf 'MULTICA_MUSEAPP_ENDPOINT=http://127.0.0.1:8765\nMULTICA_MUSEAPP_TOKEN=%s\n' "$RECEP_TOKEN" > "$DAEMON_ENV"
 chmod 600 "$DAEMON_ENV"
 echo "    env written -> $DAEMON_ENV"
 
@@ -190,8 +188,8 @@ fi
 echo "    daemon running"
 
 echo ""
-echo "Done. The daemon registered a 'muse' runtime on $SERVER."
+echo "Done. The daemon registered a 'museapp' runtime on $SERVER."
 echo "Next steps:"
 echo "  1. Ask your Muse to register the queue-watcher hook (hooks.add -> dry_run -> enable)."
 echo "  2. Ask your Muse to create the dedicated side chat for Multica notifications."
-echo "  3. In Multica, create an agent on the 'muse' runtime and dispatch a task."
+echo "  3. In Multica, create an agent on the 'museapp' runtime and dispatch a task."

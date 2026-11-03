@@ -74,11 +74,11 @@ The hook step needs agent tools. A shell script cannot do it. Your Muse runs a d
 
 **3. Dispatch a task from Multica.**
 
-In Multica, create an agent on the `muse` runtime. Send it a task. The result comes back to your Multica chat.
+In Multica, create an agent on the `museapp` runtime. Send it a task. The result comes back to your Multica chat.
 
 ## How a task flows
 
-1. A task reaches a Multica agent on the `muse` runtime.
+1. A task reaches a Multica agent on the `museapp` runtime.
 2. The daemon POSTs the prompt to your receptionist.
 3. The receptionist queues it. The watcher wakes a Muse worker within seconds.
 4. The worker runs the task with your full Muse capabilities.
@@ -94,7 +94,11 @@ In Multica, create an agent on the `muse` runtime. Send it a task. The result co
 
 Health check: `curl http://127.0.0.1:8765/healthz` returns `{"ok":true}`.
 
-The daemon reads `MULTICA_MUSEAPP_ENDPOINT` and `MULTICA_MUSEAPP_TOKEN` from `~/.config/multica-muse/daemon.env`. The installer writes this file for you. It also writes `MUSE_ENDPOINT` and `MUSE_TOKEN`, the names the daemon used before the backend was renamed `museapp`, so the pinned `muse-backend-v3` release keeps working.
+The daemon reads `MULTICA_MUSEAPP_ENDPOINT` and `MULTICA_MUSEAPP_TOKEN` from `~/.config/multica-muse/daemon.env`. The installer writes this file for you.
+
+## Upgrading
+
+To move an existing install to a newer daemon release, follow [`skills/multica-muse-setup/references/upgrade.md`](skills/multica-muse-setup/references/upgrade.md), or ask your Muse to. Do not re-run `install.sh` for this: it asks for a new Multica token every time.
 
 ## Troubleshooting
 
@@ -107,7 +111,7 @@ The daemon reads `MULTICA_MUSEAPP_ENDPOINT` and `MULTICA_MUSEAPP_TOKEN` from `~/
 
 PRs are welcome. Open an issue first if the change is large.
 
-This repo is the installer and the on-machine side. The companion `muse` backend for the Multica server lives in the [Multica repo](https://github.com/multica-ai/multica/pull/9155).
+This repo is the installer and the on-machine side. The companion `museapp` backend for the Multica daemon lives in the [Multica repo](https://github.com/multica-ai/multica/pull/9155).
 
 ## License
 

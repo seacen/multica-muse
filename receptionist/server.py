@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Multica Muse receptionist.
 
-A tiny local HTTP API that lets the Multica `muse` backend delegate task
+A tiny local HTTP API that lets the Multica `museapp` backend delegate task
 execution to a Muse agent run. Stdlib only.
 
 Flow:

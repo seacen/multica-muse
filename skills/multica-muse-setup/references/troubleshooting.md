@@ -29,15 +29,15 @@ background process (`nohup start.sh`). Verify with
 `curl -fsS http://127.0.0.1:8765/healthz`. The service will not survive a VM
 reboot in this mode — re-run `./start.sh` after restarts.
 
-## Daemon doesn't see the muse runtime
+## Daemon doesn't see the museapp runtime
 
 1. Confirm the env reached the daemon process: it must have been started
-   with `MULTICA_MUSEAPP_ENDPOINT`/`MULTICA_MUSEAPP_TOKEN` (or `MUSE_*` on the pinned release) in its environment
+   with `MULTICA_MUSEAPP_ENDPOINT`/`MULTICA_MUSEAPP_TOKEN` in its environment
    (`set -a; . ~/.config/multica-muse/daemon.env; set +a` first).
-2. `multica daemon status --profile muse` should list `muse` among agents.
+2. `multica daemon status --profile muse` should list `museapp` among agents.
 3. Grep the daemon log
    (`~/.multica/profiles/muse/daemon.log`) for
-   `registered runtime ... provider=muse` — one line per workspace.
+   `registered runtime ... provider=museapp` — one line per workspace.
    If the receptionist was down at daemon start, the daemon re-probes on its
    converge loop, so it recovers by itself after a few rounds.
 

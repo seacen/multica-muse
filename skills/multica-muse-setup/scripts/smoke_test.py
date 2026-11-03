@@ -5,7 +5,7 @@ POSTs a trivial task to the receptionist, polls until it reaches a terminal
 status, and prints the result. Exit 0 on completed, 1 otherwise.
 
 Reads the bearer token from ~/.config/multica-muse/daemon.env
-(MULTICA_MUSEAPP_TOKEN=, or MUSE_TOKEN= written for older daemon releases)
+(MULTICA_MUSEAPP_TOKEN=)
 or ~/.config/multica-muse/receptionist.env (MUSE_RECEPTIONIST_TOKEN=).
 Stdlib only.
 """
@@ -17,7 +17,6 @@ import urllib.error
 import urllib.request
 
 ENDPOINT = (os.environ.get("MULTICA_MUSEAPP_ENDPOINT")
-            or os.environ.get("MUSE_ENDPOINT")
             or "http://127.0.0.1:8765")
 TIMEOUT_S = 15
 POLL_S = 5
@@ -27,7 +26,6 @@ DEADLINE_S = 600
 def bearer_token():
     homes = [
         ("~/.config/multica-muse/daemon.env", "MULTICA_MUSEAPP_TOKEN="),
-        ("~/.config/multica-muse/daemon.env", "MUSE_TOKEN="),
         ("~/.config/multica-muse/receptionist.env", "MUSE_RECEPTIONIST_TOKEN="),
     ]
     for path, prefix in homes:
